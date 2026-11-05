@@ -75,6 +75,10 @@ export {
   AteBlockShortcuts,
   type AteBlockShortcutsOptions,
 } from "./lib/extensions/ate-block-shortcuts.extension";
+export type {
+  AteTableSortDirection,
+  AteTableFilter,
+} from "./lib/extensions/ate-table-sort.extension";
 
 // Types and interfaces for configuration
 export * from "./lib/models/ate-toolbar.model";
