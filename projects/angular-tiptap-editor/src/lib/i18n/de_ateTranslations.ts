@@ -166,6 +166,23 @@ export const GERMAN_TRANSLATIONS: AteTranslations = {
     filterTo: "Bis",
     clearColumn: "Spalte zurücksetzen",
     filterMergedCells: "Zeilen mit verbundenen Zellen können nicht gefiltert werden",
+    rowHandle: "Zeile {n}",
+    columnHandle: "Spalte {name}",
+    tableHandle: "Tabelle",
+    insertAbove: "Oberhalb einfügen",
+    insertBelow: "Unterhalb einfügen",
+    insertLeft: "Links einfügen",
+    insertRight: "Rechts einfügen",
+    filterColumn: "Filtern…",
+    headerRow: "Kopfzeile",
+    headerColumn: "Kopfspalte",
+    insertRow: "Zeile einfügen",
+    insertColumn: "Spalte einfügen",
+    filteredDeleteColumn:
+      "Bei aktivem Filter kann die Spalte nicht gelöscht werden: Filter löschen.",
+    filteredDeleteTable:
+      "Bei aktivem Filter kann die Tabelle nicht gelöscht werden: Filter löschen.",
+    filteredHeader: "Bei aktivem Filter bleiben die Kopfzellen unverändert: Filter löschen.",
   },
 
   imageUpload: {

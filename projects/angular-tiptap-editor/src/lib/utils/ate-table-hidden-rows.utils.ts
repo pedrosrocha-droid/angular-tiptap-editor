@@ -664,20 +664,20 @@ function keepsHeaderRows(tr: Transaction, before: PMNode, hidden: AteHiddenRows)
 
 /**
  * Refuses a change that would alter or remove rows a filter hides. While the selection touches
- * hidden rows, a hidden row must stay unchanged (deleting or merging rows over a filter); else
- * it must keep its cells (deleting a column, deleting the table, turning a column into headers)
- * and the table its header row. Undo, collaboration, table fixes and whole-document
+ * hidden rows (or when `strict`), a hidden row must stay unchanged (deleting or merging rows over
+ * a filter); else it must keep its cells (deleting a column, deleting the table, turning a column
+ * into headers) and the table its header row. Undo, collaboration, table fixes and whole-document
  * replacements go through.
  */
 export function protectsHiddenRows(
   tr: Transaction,
   state: EditorState,
-  hidden: AteHiddenRows
+  hidden: AteHiddenRows,
+  strict = selectionTouchesHidden(state.selection, hidden)
 ): boolean {
   if (!tr.docChanged || !hasHiddenRows(hidden) || isTrusted(tr, state.doc)) {
     return true;
   }
-  const strict = selectionTouchesHidden(state.selection, hidden);
   return keepsHiddenRows(tr, state.doc, hidden, strict) && keepsHeaderRows(tr, state.doc, hidden);
 }
 

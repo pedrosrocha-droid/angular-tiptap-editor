@@ -102,6 +102,12 @@ export interface AteEditorConfig {
   enableTableSort?: boolean;
   /** Enable filtering table rows by column from the header cells (opt-in, `false` by default) */
   enableTableFilter?: boolean;
+  /**
+   * Replace the table and cell bubble menus with handles: a handle per row, per column and for
+   * the table opens its menu, `+` between two handles inserts there, and a bar on a cell range
+   * merges or splits (opt-in, `false` by default)
+   */
+  enableTableHandles?: boolean;
   /** Maximum number of characters allowed */
   maxCharacters?: number;
   /**

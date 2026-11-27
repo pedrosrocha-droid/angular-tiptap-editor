@@ -154,6 +154,23 @@ export const FRENCH_TRANSLATIONS: AteTranslations = {
     filterTo: "Au",
     clearColumn: "Réinitialiser la colonne",
     filterMergedCells: "Impossible de filtrer des lignes avec des cellules fusionnées",
+    rowHandle: "Ligne {n}",
+    columnHandle: "Colonne {name}",
+    tableHandle: "Tableau",
+    insertAbove: "Insérer au-dessus",
+    insertBelow: "Insérer en dessous",
+    insertLeft: "Insérer à gauche",
+    insertRight: "Insérer à droite",
+    filterColumn: "Filtrer…",
+    headerRow: "Ligne d'en-tête",
+    headerColumn: "Colonne d'en-tête",
+    insertRow: "Insérer une ligne",
+    insertColumn: "Insérer une colonne",
+    filteredDeleteColumn:
+      "Avec un filtre actif, la colonne ne peut pas être supprimée : effacez les filtres.",
+    filteredDeleteTable:
+      "Avec un filtre actif, le tableau ne peut pas être supprimé : effacez les filtres.",
+    filteredHeader: "Avec un filtre actif, l'en-tête ne change pas : effacez les filtres.",
   },
   imageUpload: {
     selectImage: "Sélectionner une image",

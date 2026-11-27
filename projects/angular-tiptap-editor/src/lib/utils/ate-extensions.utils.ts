@@ -86,6 +86,7 @@ export const ATE_BUILTIN_UI_DEPENDENCIES: Readonly<Record<string, string>> = {
   tableExtension: "toolbar/slash menu table insertion, table/cell bubble menus, AteTableCalculator",
   ateTableSort:
     "table header column menu, sorting and filtering (`sortTableColumn`, `setTableColumnFilter` commands)",
+  ateTableHandles: "Delete and Backspace removing whole selected rows (`enableTableHandles`)",
   tableOfContents: "slash menu table of contents node, AteTableOfContentsComponent",
   tiptapState: "reactive editor state engine (toolbar, bubble menus, footer)",
   blockControls: "block plus button and drag handle",

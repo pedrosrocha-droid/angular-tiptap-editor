@@ -49,6 +49,7 @@ import { AtePaste } from "../../extensions/ate-paste.extension";
 import { AteTableExtension } from "../../extensions/ate-table.extension";
 import { AteSourceStyles } from "../../extensions/ate-source-styles.extension";
 import { AteTableSort, refreshTableSort } from "../../extensions/ate-table-sort.extension";
+import { AteTableHandles } from "../../extensions/ate-table-handles.extension";
 import { AteTocNodeOptions } from "../table-of-contents/ate-toc-node.component";
 import { AteTiptapStateExtension } from "../../extensions/ate-tiptap-state.extension";
 import { AteToolbarComponent } from "../toolbar/ate-toolbar.component";
@@ -57,6 +58,8 @@ import { AteImageBubbleMenuComponent } from "../bubble-menus/image/ate-image-bub
 import { AteTableBubbleMenuComponent } from "../bubble-menus/table/ate-table-bubble-menu.component";
 import { AteCellBubbleMenuComponent } from "../bubble-menus/table/ate-cell-bubble-menu.component";
 import { AteTableColumnMenuComponent } from "../bubble-menus/table/ate-table-column-menu.component";
+import { AteTableHandlesComponent } from "../bubble-menus/table/ate-table-handles.component";
+import { AteTableRangeBarComponent } from "../bubble-menus/table/ate-table-range-bar.component";
 import { AteLinkBubbleMenuComponent } from "../bubble-menus/link/ate-link-bubble-menu.component";
 import { AteColorBubbleMenuComponent } from "../bubble-menus/color/ate-color-bubble-menu.component";
 import { AteFontBubbleMenuComponent } from "../bubble-menus/font/ate-font-bubble-menu.component";
@@ -180,6 +183,8 @@ import { ATE_EFFECT_OPTIONS } from "../../utils/ate-effect.utils";
     AteTableBubbleMenuComponent,
     AteCellBubbleMenuComponent,
     AteTableColumnMenuComponent,
+    AteTableHandlesComponent,
+    AteTableRangeBarComponent,
     AteSlashCommandsComponent,
     AteLinkBubbleMenuComponent,
     AteColorBubbleMenuComponent,
@@ -293,7 +298,9 @@ import { ATE_EFFECT_OPTIONS } from "../../utils/ate-effect.utils";
       }
 
       <!-- Table Menu -->
-      @if (finalEditable() && finalShowTableBubbleMenu() && editor()) {
+      @if (
+        finalEditable() && finalShowTableBubbleMenu() && !finalEnableTableHandles() && editor()
+      ) {
         <ate-table-bubble-menu
           [editor]="editor()!"
           [config]="finalTableBubbleMenuConfig()"
@@ -301,18 +308,32 @@ import { ATE_EFFECT_OPTIONS } from "../../utils/ate-effect.utils";
       }
 
       <!-- Cell Menu -->
-      @if (finalEditable() && finalShowCellBubbleMenu() && editor()) {
+      @if (
+        finalEditable() && finalShowCellBubbleMenu() && !finalEnableTableHandles() && editor()
+      ) {
         <ate-cell-bubble-menu
           [editor]="editor()!"
           [config]="finalCellBubbleMenuConfig()"
           [style.display]="editorFullyInitialized() ? 'block' : 'none'"></ate-cell-bubble-menu>
       }
 
+      <!-- Table Handles -->
+      @if (finalEditable() && !mergedDisabled() && finalEnableTableHandles() && editor()) {
+        <ate-table-handles
+          [editor]="editor()!"
+          [enableSort]="finalEnableTableSort()"
+          [enableFilter]="finalEnableTableFilter()" />
+        <ate-table-range-bar
+          [editor]="editor()!"
+          [config]="finalCellBubbleMenuConfig()"
+          [style.display]="editorFullyInitialized() ? 'block' : 'none'"></ate-table-range-bar>
+      }
+
       <!-- Table Column Menu -->
       @if (editor() && (finalEnableTableSort() || finalEnableTableFilter())) {
         <ate-table-column-menu
           [editor]="editor()!"
-          [enableSort]="finalEnableTableSort()"
+          [enableSort]="finalEnableTableSort() && !finalEnableTableHandles()"
           [enableFilter]="finalEnableTableFilter()" />
       }
 
@@ -485,6 +506,18 @@ import { ATE_EFFECT_OPTIONS } from "../../utils/ate-effect.utils";
           var(--ate-primary, #2563eb),
           transparent 95%
         );
+        --ate-table-handle-background: var(--ate-surface, #ffffff);
+        --ate-table-handle-border-color: var(--ate-border, #e2e8f0);
+        --ate-table-handle-color: var(--ate-text-secondary, #64748b);
+        --ate-table-handle-active-background: var(--ate-primary, #2563eb);
+        --ate-table-handle-active-color: var(--ate-primary-contrast, #ffffff);
+        --ate-table-preview-remove-background: color-mix(
+          in srgb,
+          var(--ate-error-color, #c53030),
+          transparent 88%
+        );
+        --ate-table-preview-remove-border-color: var(--ate-error-color, #c53030);
+        --ate-table-preview-insert-color: var(--ate-primary, #2563eb);
 
         /* Floating UI & Tooltips */
         --ate-tooltip-bg: var(--ate-code-block-background, #0f172a);
@@ -1324,6 +1357,9 @@ export class AngularTiptapEditorComponent implements AfterViewInit, OnDestroy {
   enableTableFilter = input<boolean | undefined, unknown>(undefined, {
     transform: transformBooleanInput,
   });
+  enableTableHandles = input<boolean | undefined, unknown>(undefined, {
+    transform: transformBooleanInput,
+  });
   slashCommands = input<AteSlashCommandsConfig | undefined>(undefined);
   customSlashCommands = input<AteCustomSlashCommands | undefined>(undefined);
   blockControls = input<AteBlockControlsMode>();
@@ -1685,6 +1721,9 @@ export class AngularTiptapEditorComponent implements AfterViewInit, OnDestroy {
   readonly finalEnableTableFilter = computed(
     () => this.enableTableFilter() ?? this.effectiveConfig().enableTableFilter ?? false
   );
+  readonly finalEnableTableHandles = computed(
+    () => this.enableTableHandles() ?? this.effectiveConfig().enableTableHandles ?? false
+  );
   readonly finalBlockControls = computed(
     () => this.blockControls() ?? this.effectiveConfig().blockControls ?? "none"
   );
@@ -1900,13 +1939,14 @@ export class AngularTiptapEditorComponent implements AfterViewInit, OnDestroy {
       }
     });
 
-    // Effect to redraw the table column buttons when the language or table sort/filter flags change
+    // Effect to redraw the table column buttons when the language or a table column flag changes
     effect(() => {
       const editor = this.editor();
       this.currentTranslations();
       this.tableDecimalSeparator();
       this.finalEnableTableSort();
       this.finalEnableTableFilter();
+      this.finalEnableTableHandles();
 
       if (editor) {
         untracked(() => refreshTableSort(editor));
@@ -2144,6 +2184,10 @@ export class AngularTiptapEditorComponent implements AfterViewInit, OnDestroy {
         enableFilter: () => untracked(() => this.finalEnableTableFilter()),
         labels: () => untracked(() => this.currentTranslations().table),
         decimalSeparator: () => untracked(() => this.tableDecimalSeparator()),
+        columnButtons: () => untracked(() => !this.finalEnableTableHandles()),
+      }),
+      AteTableHandles.configure({
+        enabled: () => untracked(() => this.finalEnableTableHandles()),
       }),
       Markdown,
       registerAngularComponent(this.injector, AteTocNodeOptions),
