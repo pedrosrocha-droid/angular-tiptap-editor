@@ -36,6 +36,7 @@ Detailed documentation for `AngularTiptapEditorComponent` inputs, outputs, and c
 | `enableTextAlign`      | `boolean`                                        | `true`              | Enable text alignment                               |
 | `enableTableSort`      | `boolean`                                        | `false`             | Enable sorting table rows by column (opt-in)        |
 | `enableTableFilter`    | `boolean`                                        | `false`             | Enable filtering table rows by column (opt-in)      |
+| `enableTableHandles`   | `boolean`                                        | `false`             | Row, column and table handles with menus (opt-in)   |
 | `enableOfficePaste`    | `boolean`                                        | `true`              | Enable smart Office pasting                         |
 | `paste`                | `AtePasteConfig`                                 | All kept            | Formats kept from other apps, `transformHTML` hook  |
 | `toolbar`              | `AteToolbarConfig`                               | All enabled         | Detailed toolbar configuration                      |
@@ -73,6 +74,8 @@ Detailed documentation for `AngularTiptapEditorComponent` inputs, outputs, and c
 > **Table sorting**: opt-in via `enableTableSort: true` (`false` by default). Every table with a header row shows a menu button in each header cell that sorts the rows by that column, ascending or descending. The button is hidden in a read-only editor. From code, `editor.commands.sortTableColumn(column, direction, tablePos?)` (`direction` is an `AteTableSortDirection`, `"asc"` or `"desc"`). See [Table Sorting](ADVANCED.md#-table-sorting).
 >
 > **Table filtering**: opt-in via `enableTableFilter: true` (`false` by default; can be used with or without `enableTableSort`). The column menu filters the rows by that column (text, a list of values, a number range or a date range, picked from the values) and filters of several columns combine. A filter only hides rows on screen: it is not saved, exported or shared. From code, `editor.commands.setTableColumnFilter(column, filter, tablePos?)` (`filter` is an `AteTableFilter`, or `null` to remove it), `clearTableFilters(tablePos?)` and `revealTableRow(pos)`. See [Table Filtering](ADVANCED.md#-table-filtering).
+>
+> **Table handles**: opt-in via `enableTableHandles: true` (`false` by default, can change at runtime). Hovering a table shows a handle for the row and the column under the pointer and one for the table; a handle selects its row or column and opens its menu (insert, delete, sort and filter, header row and column), `+` between two handles inserts there, and a cell range shows Merge cells / Split cell. It replaces the table and cell bubble menus (`showTableMenu`, `showCellMenu` and `tableBubbleMenu` no longer apply; `cellBubbleMenu` still hides Merge or Split) and, in an editable editor, the header cell menu button of `enableTableSort` / `enableTableFilter`. See [Table Handles](ADVANCED.md#-table-handles).
 >
 > **Block drag handle**: with `blockControls` enabled, the `⋮⋮` handle drags the whole top-level block. If the selection spans several blocks and you grab the handle of one of them, all the selected blocks move together and keep their order. The drop always lands on a top-level block boundary (never inside a list, blockquote or table cell) and a drop indicator line is shown before or after the target block (`.ate-block-drop-before` / `.ate-block-drop-after`, which you can restyle). The native drop cursor is hidden during a block drag, and the drag state is cleared on drop, `dragend` (also when the drop happens outside the editor) or Escape.
 
@@ -118,6 +121,7 @@ export interface AteEditorConfig {
   enableTextAlign?: boolean; // Alignment extension, shortcuts and buttons (default: true)
   enableTableSort?: boolean; // Sort table rows by column (default: false)
   enableTableFilter?: boolean; // Filter table rows by column (default: false)
+  enableTableHandles?: boolean; // Row, column and table handles instead of the table bubble menus (default: false)
   maxCharacters?: number;
   blockControls?: AteBlockControlsMode; // "inside" | "outside" | "none"
 

@@ -125,7 +125,7 @@ editorConfig: AteEditorConfig = {
 
 ### Overriding Built-in Extensions
 
-Extensions passed in `tiptapExtensions` take precedence over built-in extensions of the same `name` (both ATE's built-ins such as `highlight`, `textStyle`, `color`, `placeholder`, `superscript`, `subscript`, `taskList`, `taskItem`, `textAlign`, `resizableImage`, `tableExtension`, `ateTableSort`, `tableOfContents`, and extensions bundled in Tiptap's `StarterKit` such as `codeBlock`, `heading`, `link`, `undoRedo`, ...).
+Extensions passed in `tiptapExtensions` take precedence over built-in extensions of the same `name` (both ATE's built-ins such as `highlight`, `textStyle`, `color`, `placeholder`, `superscript`, `subscript`, `taskList`, `taskItem`, `textAlign`, `resizableImage`, `tableExtension`, `ateTableSort`, `ateTableHandles`, `tableOfContents`, and extensions bundled in Tiptap's `StarterKit` such as `codeBlock`, `heading`, `link`, `undoRedo`, ...).
 
 When a custom extension replaces a built-in one:
 
@@ -357,6 +357,37 @@ editor.commands.revealTableRow(pos); // removes the filters hiding the row at `p
 ```
 
 `tablePos` defaults to the table holding the selection. `setTableColumnFilter` returns `false` for a table without a header row or body rows, for a table with a cell spanning rows and for a malformed filter (with a warning in development). Before scrolling to or selecting content inside a row a filter may hide, call `revealTableRow(pos)`. In an editable editor a selection set inside a hidden row shows that row while the selection stays there; in a read-only editor, a selection set from code with `scrollIntoView()` inside a hidden row removes the filters of that table. Restyle the status bar with `.ate-table-filter-status` and `.ate-table-filter-clear`, and the highlighted button with `.ate-table-column-button.is-filtered`.
+
+## 🔲 Table Handles
+
+Opt-in via `enableTableHandles: true` in `AteEditorConfig` or `[enableTableHandles]="true"` (`false` by default; it can change at runtime). Instead of a menu that opens on every click in a table, you pick the row, the column or the table first, then act on it:
+
+- With the pointer over a table, a handle (`⋮⋮`) shows on the left edge of the row and on the top edge of the column under the pointer, and one at the top left corner of the table. They are drawn outside the document (never in `getHTML()`, the exports or the undo history) and go away when the pointer leaves the table. Clicking a cell to type opens nothing.
+- The row handle selects the row and opens "Row N": Insert above, Insert below, Delete row. Delete or Backspace on a whole selected row deletes it.
+- The column handle selects the column and opens "Column X" (X is the header text, else the column number): Sort ascending, Sort descending and Filter… when `enableTableSort` / `enableTableFilter` are on and the table has a header row, then Insert left, Insert right, Delete column. Filter… opens the filter of that column. In an editable editor the header cells no longer show the column menu button (the sort arrow stays); a read-only editor is unchanged.
+- The table handle opens "Table": Header row and Header column, switches showing whether the table has them, and Delete table.
+- `+` between the handle of a row and the next one (or of a column and the next one) inserts a row (or a column) there.
+- Hovering a delete item paints the row, the column or the table about to go; hovering an insert item or `+` draws a line where the new row or column goes. These previews are an overlay: they never create a transaction, so the document, the history and collaboration never see them.
+- A cell range that is not a whole row or column shows Merge cells and Split cell, each enabled when the range allows it (`can().mergeCells()` / `can().splitCell()`: split only for a merged cell). `cellBubbleMenu: { mergeCells: false }` or `{ splitCell: false }` hides a button.
+- The table and cell bubble menus are not shown: `showTableMenu`, `showCellMenu` and `tableBubbleMenu` do not apply while the handles are on.
+- A read-only editor shows no handle, `+`, menu or range bar.
+- While a filter hides rows (`enableTableFilter`), an item that would change them is disabled with the reason written under it: Delete column, Delete table, the header switches, and inserting above or deleting the header row. Inserting or deleting a visible row still works, and an inserted row stays visible.
+- Keyboard: Shift+F10 in a cell focuses the handle of its row; Tab moves to the table and column handles and the `+` buttons; Enter or Space opens a menu; the arrow keys, Home and End move in it and Enter runs an item; Delete or Backspace in the row menu deletes the row; Escape closes the menu and gives the focus back to its handle, and Escape on a handle goes back to the text. Handles, `+` buttons and menus have an accessible name; the menus are `role="menu"` and the switches `role="menuitemcheckbox"` with `aria-checked`.
+
+Restyle them with these tokens:
+
+| Token                                     | Default                       | Used for                                     |
+| ----------------------------------------- | ----------------------------- | -------------------------------------------- |
+| `--ate-table-handle-background`           | `var(--ate-surface)`          | Handles and `+`                              |
+| `--ate-table-handle-border-color`         | `var(--ate-border)`           | Their border                                 |
+| `--ate-table-handle-color`                | `var(--ate-text-secondary)`   | Their icon                                   |
+| `--ate-table-handle-active-background`    | `var(--ate-primary)`          | A hovered handle, or one whose menu is open  |
+| `--ate-table-handle-active-color`         | `var(--ate-primary-contrast)` | Its icon                                     |
+| `--ate-table-preview-remove-background`   | `--ate-error-color` at 12%    | Row, column or table about to be deleted     |
+| `--ate-table-preview-remove-border-color` | `var(--ate-error-color)`      | Its outline                                  |
+| `--ate-table-preview-insert-color`        | `var(--ate-primary)`          | Line where a row or column will be inserted  |
+
+The selected row or column uses `--ate-table-cell-selected-background`, like any cell selection.
 
 ## 📋 Paste Handling (`paste`)
 
