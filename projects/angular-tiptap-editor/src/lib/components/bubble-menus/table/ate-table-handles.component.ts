@@ -57,6 +57,7 @@ import {
   openTableColumnMenu,
   spansRows,
   tableAt,
+  tableHasHiddenRows,
   toggleTableColumnMenu,
 } from "../../../extensions/ate-table-sort.extension";
 
@@ -130,6 +131,8 @@ const HIDE_DELAY = 250;
 const CONTEXT_MENU_GRACE = 1000;
 
 const NO_ACTION: AteTableHandleActionState = { enabled: false, blockedByFilter: false };
+
+const AVAILABLE: AteTableHandleActionState = { enabled: true, blockedByFilter: false };
 
 let nextId = 0;
 
@@ -1114,7 +1117,12 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
       return NO_ACTION;
     }
     const target = { kind, tablePos: cell.tablePos, index: kind === "row" ? cell.row : cell.col };
-    return untracked(() => tableHandleActionState(this.editor().state, target, "insertAfter"));
+    return untracked(() => {
+      const { state } = this.editor();
+      return tableHasHiddenRows(state, cell.tablePos)
+        ? tableHandleActionState(state, target, "insertAfter")
+        : AVAILABLE;
+    });
   }
 
   private measure() {
