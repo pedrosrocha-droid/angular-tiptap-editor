@@ -910,37 +910,6 @@ test.describe("Table handles", () => {
     await expect(rowHandle(page)).toHaveAccessibleName("Row 3");
   });
 
-  test("a column picked from its handle while a filter hides the last rows shows no merge bar", async ({
-    page,
-  }) => {
-    await setConfig(page, { ...HANDLES, enableTableFilter: true });
-    await setContent(page, PEOPLE);
-    await filterColumn(page, 1, { kind: "values", values: ["Paris", "Lyon"] });
-    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Bob", "Cid"]);
-    const bar = page.getByRole("button", { name: "Merge cells" });
-
-    await cell(page, 1, 1).hover();
-    let menu = await openMenu(page, columnHandle(page), "Column City");
-    await expect(page.locator(".ProseMirror tr > .selectedCell:nth-child(2)")).toHaveCount(4);
-    const mergeItem = menu.getByRole("menuitem", { name: "Merge cells" });
-    await expect(mergeItem).toHaveAttribute("aria-disabled", "true");
-    await expect(mergeItem).toHaveAccessibleDescription(CELLS_REASON);
-    await columnHandle(page).click();
-    await expectMenuClosed(menu);
-    await expect(page.locator(".ProseMirror")).toBeFocused();
-    await page.waitForTimeout(300);
-    await expectMenuClosed(bar);
-
-    menu = await openMenu(page, columnHandle(page), "Column City");
-    await page.keyboard.press("Escape");
-    await expect(columnHandle(page)).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".ProseMirror")).toBeFocused();
-    await page.waitForTimeout(300);
-    await expectMenuClosed(bar);
-    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Bob", "Cid"]);
-  });
-
   test("the row and column menus merge a whole row or column and split a cell as wide or tall as the table", async ({
     page,
   }) => {
@@ -1219,10 +1188,53 @@ test.describe("Table handles", () => {
   });
 });
 
+test.describe("Table handles, with the page clock", () => {
+  test.use({ locale: "en-US" });
+
+  test.beforeEach(async ({ page }) => {
+    await page.clock.install();
+    await page.goto("/");
+    await expect(page.locator(".ate-editor")).toBeVisible();
+    await clearEditor(page);
+  });
+
+  test("a column picked from its handle while a filter hides the last rows shows no merge bar", async ({
+    page,
+  }) => {
+    await setConfig(page, { ...HANDLES, enableTableFilter: true });
+    await setContent(page, PEOPLE);
+    await filterColumn(page, 1, { kind: "values", values: ["Paris", "Lyon"] });
+    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Bob", "Cid"]);
+    const bar = page.getByRole("button", { name: "Merge cells" });
+
+    await cell(page, 1, 1).hover();
+    let menu = await openMenu(page, columnHandle(page), "Column City");
+    await expect(page.locator(".ProseMirror tr > .selectedCell:nth-child(2)")).toHaveCount(4);
+    const mergeItem = menu.getByRole("menuitem", { name: "Merge cells" });
+    await expect(mergeItem).toHaveAttribute("aria-disabled", "true");
+    await expect(mergeItem).toHaveAccessibleDescription(CELLS_REASON);
+    await columnHandle(page).click();
+    await expectMenuClosed(menu);
+    await expect(page.locator(".ProseMirror")).toBeFocused();
+    await page.clock.runFor(300);
+    await expectMenuClosed(bar);
+
+    menu = await openMenu(page, columnHandle(page), "Column City");
+    await page.keyboard.press("Escape");
+    await expect(columnHandle(page)).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".ProseMirror")).toBeFocused();
+    await page.clock.runFor(300);
+    await expectMenuClosed(bar);
+    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Bob", "Cid"]);
+  });
+});
+
 test.describe("Table handles on a touch screen", () => {
   test.use({ locale: "en-US", hasTouch: true });
 
   test.beforeEach(async ({ page }) => {
+    await page.clock.install();
     await page.goto("/");
     await expect(page.locator(".ate-editor")).toBeVisible();
     await clearEditor(page);
@@ -1237,14 +1249,14 @@ test.describe("Table handles on a touch screen", () => {
     const target = await box(cell(page, 2, 1));
     await page.touchscreen.tap(target.x + target.width / 2, target.y + target.height / 2);
     await expect(rowHandle(page)).toHaveAccessibleName("Row 3");
-    await page.waitForTimeout(600);
+    await page.clock.runFor(600);
     await expect(rowHandle(page)).toBeVisible();
     await expect(columnHandle(page)).toHaveAccessibleName("Column City");
 
     await rowHandle(page).tap();
     const menu = page.getByRole("menu", { name: "Row 3" });
     await expect(menu).toBeVisible();
-    await page.waitForTimeout(600);
+    await page.clock.runFor(600);
     await expect(menu).toBeVisible();
     await expect(rowHandle(page)).toHaveAttribute("aria-expanded", "true");
 
