@@ -370,8 +370,10 @@ test.describe("Table handles", () => {
     await expect(page.locator(".ProseMirror tr > .selectedCell:nth-child(2)")).toHaveCount(5);
 
     await menu.getByRole("menuitem", { name: "Sort ascending" }).click();
-    await expect(column(page, 1)).toHaveText(["City", "Lyon", "Nice", "Paris", "Paris"]);
+    await expect(visibleColumn(page, 1)).toHaveText(["Lyon", "Nice", "Paris", "Paris"]);
+    await expect(headerCells(page).nth(1).locator("p")).toHaveText("City");
     await expect(headerCells(page).nth(1)).toHaveAttribute("aria-sort", "ascending");
+    await expect(headerCells(page).nth(1).locator(".ate-table-column-sort")).toHaveText("▲");
     await expect(page.locator(".ProseMirror .ate-table-column-button")).toHaveCount(0);
 
     await cell(page, 1, 1).hover();
