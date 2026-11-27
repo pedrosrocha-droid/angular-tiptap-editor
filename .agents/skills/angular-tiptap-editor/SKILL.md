@@ -330,7 +330,8 @@ Opt-in (`enableTableHandles: true`, default `false`, reactive). Replaces the tab
 - Hovering a table shows handles (`⋮⋮`) on the row and the column under the pointer and at the table corner, outside the document; they go away when the pointer leaves. Touch: a tap on a cell shows them until a tap outside. Clicking a cell to type opens nothing. A handle scrolled out of the editor is hidden and its menu closes.
 - Row handle: selects the row; menu Insert above / Insert below / Merge cells or Split cell (when they apply) / Delete row. Delete or Backspace on a whole selected row deletes it.
 - Column handle: selects the column; menu Sort ascending / descending and Filter… (with `enableTableSort` / `enableTableFilter` and a header row), Insert left / right, Merge cells or Split cell (when they apply), Delete column. While editable, header cells lose their column menu button (the sort arrow stays); read-only is unchanged.
-- Merged cells: a handle selects every row or column its cells cover; insert, delete, Delete / Backspace and the previews act on all of them.
+- Merged cells: the row handle selects every row the first and last cells of its row cover, the column handle every column the top and bottom cells of its column cover; insert, delete, Delete / Backspace and the previews act on all of them. A merged cell in between does not widen the selection (deleting shrinks it).
+- Each handle, menu, `+` or Delete / Backspace action starts a new undo step (undo never also reverts the typing before it).
 - Table handle: Header row and Header column switches (`aria-checked`), Delete table. `+` between two handles inserts a row or a column there.
 - Previews (band about to be deleted, insertion line) are an overlay: no transaction, history or collaboration update.
 - Cell range that is not a whole row or column: Merge cells / Split cell, enabled by `can().mergeCells()` / `can().splitCell()`.
