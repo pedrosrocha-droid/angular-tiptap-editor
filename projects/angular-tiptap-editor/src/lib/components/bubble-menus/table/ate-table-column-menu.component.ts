@@ -15,6 +15,7 @@ import {
 import tippy, { Instance as TippyInstance } from "tippy.js";
 import { Editor } from "@tiptap/core";
 import { TableMap } from "@tiptap/pm/tables";
+import type { EditorView } from "@tiptap/pm/view";
 import { AteEditorI18n } from "../../../services/ate-editor-i18n.service";
 import {
   ATE_TABLE_COLUMN_ATTR,
@@ -28,6 +29,7 @@ import {
   closeTableColumnMenu,
   columnButton,
   columnFilterInfo,
+  columnHeaderCell,
   columnSortDirection,
   openTableColumnMenu,
   tableAt,
@@ -378,6 +380,8 @@ export class AteTableColumnMenuComponent implements AfterViewInit, OnDestroy {
   private focusTimeout: ReturnType<typeof setTimeout> | null = null;
   private escapeTimeout: ReturnType<typeof setTimeout> | null = null;
   private datePickerOpen = false;
+  /** Where the focus goes back when the column has no button (opened from a table handle) */
+  private returnFocus: HTMLElement | null = null;
 
   constructor() {
     effect(onCleanup => {
@@ -513,7 +517,7 @@ export class AteTableColumnMenuComponent implements AfterViewInit, OnDestroy {
     const { view } = this.editor();
     clearTableColumn(view, menu);
     closeTableColumnMenu(view);
-    columnButton(view, menu)?.focus();
+    this.focusOpener(view, menu);
   }
 
   private applyFilter(filter: AteTableFilter | null) {
@@ -553,6 +557,8 @@ export class AteTableColumnMenuComponent implements AfterViewInit, OnDestroy {
     }
     this.tippyInstance.popperInstance?.update();
     if (previous?.tablePos !== target.tablePos || previous.col !== target.col) {
+      const active = document.activeElement;
+      this.returnFocus = active instanceof HTMLElement ? active : null;
       this.tippyInstance.show();
       if (this.focusTimeout) {
         clearTimeout(this.focusTimeout);
@@ -571,8 +577,17 @@ export class AteTableColumnMenuComponent implements AfterViewInit, OnDestroy {
 
   private anchorRect(): DOMRect {
     const menu = this.menu();
-    const button = menu ? columnButton(this.editor().view, menu) : null;
-    return button ? button.getBoundingClientRect() : new DOMRect(-9999, -9999, 0, 0);
+    const { view } = this.editor();
+    const anchor = menu ? (columnButton(view, menu) ?? columnHeaderCell(view, menu)) : null;
+    return anchor ? anchor.getBoundingClientRect() : new DOMRect(-9999, -9999, 0, 0);
+  }
+
+  private focusOpener(view: EditorView, menu: AteTableColumnTarget) {
+    const opener = columnButton(view, menu) ?? this.returnFocus;
+    this.returnFocus = null;
+    if (opener?.isConnected) {
+      opener.focus();
+    }
   }
 
   private closeOnOutside(event: PointerEvent) {
@@ -609,6 +624,6 @@ export class AteTableColumnMenuComponent implements AfterViewInit, OnDestroy {
     event.stopPropagation();
     const { view } = this.editor();
     closeTableColumnMenu(view);
-    columnButton(view, menu)?.focus();
+    this.focusOpener(view, menu);
   }
 }

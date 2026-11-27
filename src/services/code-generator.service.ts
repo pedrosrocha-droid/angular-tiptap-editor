@@ -544,6 +544,9 @@ ${importsLines.join("\n")}`;
     if (editorState.enableTableFilter) {
       configItems.push(`    enableTableFilter: true,`);
     }
+    if (editorState.enableTableHandles) {
+      configItems.push(`    enableTableHandles: true,`);
+    }
     if (editorState.blockControls && editorState.blockControls !== "none") {
       configItems.push(`    blockControls: '${editorState.blockControls}',`);
     }

@@ -199,6 +199,27 @@ export const ITALIAN_TRANSLATIONS: AteTranslations = {
     filterTo: "A",
     clearColumn: "Reimposta colonna",
     filterMergedCells: "Impossibile filtrare le righe con celle unite",
+    rowHandle: "Riga {n}",
+    columnHandle: "Colonna {name}",
+    tableHandle: "Tabella",
+    insertAbove: "Inserisci sopra",
+    insertBelow: "Inserisci sotto",
+    insertLeft: "Inserisci a sinistra",
+    insertRight: "Inserisci a destra",
+    filterColumn: "Filtra…",
+    headerRow: "Riga di intestazione",
+    headerColumn: "Colonna di intestazione",
+    insertRow: "Inserisci riga",
+    insertColumn: "Inserisci colonna",
+    filteredDeleteColumn:
+      "Con un filtro attivo la colonna non può essere eliminata: cancella i filtri.",
+    filteredDeleteTable:
+      "Con un filtro attivo la tabella non può essere eliminata: cancella i filtri.",
+    filteredHeader: "Con un filtro attivo l'intestazione non cambia: cancella i filtri.",
+    filteredInsertColumn:
+      "Con un filtro attivo non si possono inserire colonne: cancella i filtri.",
+    filteredCells:
+      "Con un filtro attivo queste celle non possono essere unite né divise: cancella i filtri.",
   },
   imageUpload: {
     selectImage: "Seleziona immagine",

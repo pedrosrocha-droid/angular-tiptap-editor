@@ -125,6 +125,14 @@
   --ate-table-cell-selected-background: var(--ate-primary-light);
   --ate-table-resize-handle-color: var(--ate-primary);
   --ate-table-row-hover-background: var(--ate-primary-lighter);
+  --ate-table-handle-background: var(--ate-surface);
+  --ate-table-handle-border-color: var(--ate-border);
+  --ate-table-handle-color: var(--ate-text-secondary);
+  --ate-table-handle-active-background: var(--ate-primary);
+  --ate-table-handle-active-color: var(--ate-primary-contrast);
+  --ate-table-preview-remove-background: color-mix(in srgb, var(--ate-error-color), transparent 88%);
+  --ate-table-preview-remove-border-color: var(--ate-error-color);
+  --ate-table-preview-insert-color: var(--ate-primary);
 
   /* Floating UI & Tooltips */
   --ate-tooltip-bg: var(--ate-code-block-background, #0f172a);

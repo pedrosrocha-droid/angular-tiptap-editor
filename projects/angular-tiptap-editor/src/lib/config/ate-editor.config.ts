@@ -177,6 +177,7 @@ export const ATE_DEFAULT_CONFIG: AteEditorConfig = {
   enableTextAlign: true,
   enableTableSort: false,
   enableTableFilter: false,
+  enableTableHandles: false,
   blockControls: "none",
   floatingToolbar: false,
   toolbar: ATE_DEFAULT_TOOLBAR_CONFIG,

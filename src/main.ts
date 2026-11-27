@@ -473,6 +473,7 @@ export class App {
       enableBlockShortcuts: state.enableBlockShortcuts,
       enableTableSort: state.enableTableSort,
       enableTableFilter: state.enableTableFilter,
+      enableTableHandles: state.enableTableHandles,
       angularNodes: this.finalAngularNodes(),
       blockControls: state.blockControls,
       paste:

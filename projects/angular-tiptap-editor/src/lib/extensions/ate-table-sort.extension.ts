@@ -94,6 +94,8 @@ export interface AteTableSortOptions {
   labels: () => AteTableSortLabels;
   /** Decimal separator of the editor language, for numbers no other value in the column settles */
   decimalSeparator: () => AteTableDecimalSeparator;
+  /** Whether header cells show the column menu button; the sort arrow shows either way */
+  columnButtons: () => boolean;
 }
 
 export interface AteTableColumnTarget {
@@ -112,7 +114,7 @@ export interface AteTableSortState {
   menu: AteTableColumnTarget | null;
   /** Whether the rows holding the selection stay visible; off right after a filter changes */
   sticky: boolean;
-  /** Start positions of rows a paste added, shown until the filters change */
+  /** Start positions of rows shown until the filters change (added by a paste or a table handle) */
   pinned: readonly number[];
   enableSort: boolean;
   enableFilter: boolean;
@@ -414,6 +416,20 @@ export function columnButton(view: EditorView, target: AteTableColumnTarget): HT
   );
 }
 
+/** The header cell of a column, where its menu opens when the header has no column button */
+export function columnHeaderCell(
+  view: EditorView,
+  target: AteTableColumnTarget
+): HTMLElement | null {
+  const table = tableAt(view.state.doc, target.tablePos);
+  const map = table ? TableMap.get(table) : null;
+  if (!map || target.col < 0 || target.col >= map.width) {
+    return null;
+  }
+  const dom = view.nodeDOM(target.tablePos + 1 + map.map[HEADER_ROW * map.width + target.col]);
+  return dom instanceof HTMLElement ? dom : null;
+}
+
 function hiddenOf(state: EditorState): AteHiddenRows {
   return ateTableSortKey.getState(state)?.hidden ?? new Map<number, ReadonlySet<number>>();
 }
@@ -439,6 +455,7 @@ interface AteColumnWidget {
   filtered: boolean;
   expanded: boolean;
   labels: AteTableSortLabels;
+  button: boolean;
 }
 
 function columnWidget(widget: AteColumnWidget) {
@@ -453,6 +470,9 @@ function columnWidget(widget: AteColumnWidget) {
       arrow.setAttribute("aria-hidden", "true");
       arrow.textContent = widget.sortDir === "asc" ? "▲" : "▼";
       wrap.append(arrow);
+    }
+    if (!widget.button) {
+      return wrap;
     }
     const button = document.createElement("button");
     button.type = "button";
@@ -550,7 +570,8 @@ function tableDecorations(
   enableSort: boolean,
   enableFilter: boolean,
   labels: AteTableSortLabels,
-  decimal: AteTableDecimalSeparator
+  decimal: AteTableDecimalSeparator,
+  columnButtons: boolean
 ): Decoration[] {
   if (!hasHeaderRow(table) || (!enableSort && !enableFilter)) {
     return [];
@@ -566,9 +587,20 @@ function tableDecorations(
         const dir = sort?.col === col ? sortDir : null;
         const filtered = enableFilter && !!tracked?.filters.has(col);
         const expanded = menu?.tablePos === tablePos && menu.col === col;
+        if (!columnButtons && !dir) {
+          return [];
+        }
         const widget = Decoration.widget(
           cellPos + 1,
-          columnWidget({ col, label, sortDir: dir, filtered, expanded, labels }),
+          columnWidget({
+            col,
+            label,
+            sortDir: dir,
+            filtered,
+            expanded,
+            labels,
+            button: columnButtons,
+          }),
           {
             side: -1,
             ignoreSelection: true,
@@ -582,6 +614,7 @@ function tableDecorations(
               label,
               labels.columnMenu,
               labels.columnFiltered,
+              columnButtons,
             ].join(":"),
           }
         );
@@ -780,8 +813,15 @@ function reduce(
       });
       return { ...current, tables };
     }
-    case "pin":
-      return { ...current, pinned: [...current.pinned, ...action.rows] };
+    case "pin": {
+      const filtered = Array.from(current.tables).filter(([, tracked]) => tracked.filters.size);
+      const rows = Array.from(new Set(action.rows)).filter(
+        pos =>
+          !current.pinned.includes(pos) &&
+          filtered.some(([tablePos]) => rowIndexIn(doc, tablePos, pos + 1) !== null)
+      );
+      return rows.length ? { ...current, pinned: [...current.pinned, ...rows] } : current;
+    }
     case "toggleMenu": {
       const same = current.menu?.tablePos === action.tablePos && current.menu.col === action.col;
       const valid = !!tableAt(doc, action.tablePos);
@@ -832,7 +872,8 @@ function buildState(
   enableSort: boolean,
   enableFilter: boolean,
   labels: AteTableSortLabels,
-  decimal: AteTableDecimalSeparator
+  decimal: AteTableDecimalSeparator,
+  columnButtons: boolean
 ): AteTableSortState {
   const hidden = computeHidden(next, state, editable, enableFilter, decimal);
   const decorations: Decoration[] = [];
@@ -851,7 +892,8 @@ function buildState(
         enableSort,
         enableFilter,
         labels,
-        decimal
+        decimal,
+        columnButtons
       )
     );
     return false;
@@ -994,6 +1036,7 @@ export const AteTableSort = Extension.create<AteTableSortOptions>({
         clearFilters: "Clear filters",
       }),
       decimalSeparator: () => ".",
+      columnButtons: () => true,
     };
   },
 
@@ -1123,7 +1166,8 @@ export const AteTableSort = Extension.create<AteTableSortOptions>({
         options.enableSort(),
         options.enableFilter(),
         options.labels(),
-        options.decimalSeparator()
+        options.decimalSeparator(),
+        options.columnButtons()
       );
     return [
       new Plugin<AteTableSortState>({
@@ -1317,10 +1361,43 @@ export const AteTableSort = Extension.create<AteTableSortOptions>({
   },
 });
 
+/** Whether a filter hides rows of the table at `tablePos` */
+export function tableHasHiddenRows(state: EditorState, tablePos: number): boolean {
+  return !!hiddenOf(state).get(tablePos)?.size;
+}
+
 /** Whether the table holding the selection has rows a filter hides */
 export function selectionTableHasHiddenRows(state: EditorState): boolean {
   const tablePos = tablePosAround(state.selection.$from);
-  return tablePos !== null && !!hiddenOf(state).get(tablePos)?.size;
+  return tablePos !== null && tableHasHiddenRows(state, tablePos);
+}
+
+/** Rows a filter hides, by table position */
+export function tableHiddenRows(state: EditorState): AteHiddenRows {
+  return hiddenOf(state);
+}
+
+/** Rows of the table at `tablePos` its filters fail, shown only because the selection holds them */
+export function rowsShownBySelection(state: EditorState, tablePos: number): number[] {
+  const plugin = ateTableSortKey.getState(state);
+  const tracked = plugin?.tables.get(tablePos);
+  const table = tableAt(state.doc, tablePos);
+  if (!plugin?.enableFilter || !tracked?.filters.size || !table) {
+    return [];
+  }
+  const failing = failingRowsOf(table, tracked.filters, plugin.decimal);
+  const hidden = plugin.hidden.get(tablePos);
+  return Array.from(selectionRows(state.selection, tablePos)).filter(
+    row => failing.has(row) && !hidden?.has(row)
+  );
+}
+
+/** Keeps rows (their start positions in `tr.doc`) shown until the filters of their table change */
+export function pinTableRows(tr: Transaction, rows: number[]): Transaction {
+  if (rows.length) {
+    addAction(tr, { type: "pin", rows });
+  }
+  return tr;
 }
 
 /** Whether the selection covers rows a filter hides, which blocks row and cell operations */

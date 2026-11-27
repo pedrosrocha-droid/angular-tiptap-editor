@@ -323,6 +323,23 @@ Opt-in (`enableTableFilter: true`, default `false`; works with or without `enabl
 - With hidden rows, copy / cut / paste / typing (also mobile, IME, autocorrect) / Delete / Backspace / arrows / Tab touch visible rows only; cut removes no row; a copy that crosses no hidden row is unchanged (no header added). Rows a paste adds go after the last filled row and stay visible until the filters change; a pasted grid wider than the table is left to the default paste (the table grows, filters removed; cleared first when its rows would land on hidden rows). Row, cell and formatting transactions that would alter hidden rows and drag are blocked while the selection covers hidden rows; delete column / delete table / header row to body cells / column to header cells are blocked while the table has hidden rows (the delete column, delete table and header toggle buttons are disabled); the block handle still drags whole tables.
 - From code: `setTableColumnFilter(column, filter | null, tablePos?)` with `AteTableFilter` (`{ kind: "text", query }`, `{ kind: "values", values }`, `{ kind: "number", min?, max? }`, `{ kind: "date", from?, to? }` as `yyyy-mm-dd`), `clearTableFilters(tablePos?)`, `revealTableRow(pos)` before selecting or scrolling into a row a filter may hide.
 
+## 🔲 Table Handles
+
+Opt-in (`enableTableHandles: true`, default `false`, reactive). Replaces the table and cell bubble menus (`showTableMenu`, `showCellMenu` ignored while on) with "select, then act":
+
+- Hovering a table shows handles (`⋮⋮`) on the row and the column under the pointer and at the table corner, outside the document; they go away when the pointer leaves. Touch: a tap on a cell shows them until a tap outside. Clicking a cell to type opens nothing. A handle scrolled out of the editor is hidden and its menu closes.
+- Row handle: selects the row; menu Insert above / Insert below / Merge cells or Split cell (when they apply) / Delete row. Delete or Backspace on a whole selected row deletes it.
+- Column handle: selects the column; menu Sort ascending / descending and Filter… (with `enableTableSort` / `enableTableFilter` and a header row), Insert left / right, Merge cells or Split cell (when they apply), Delete column. While editable, header cells lose their column menu button (the sort arrow stays); read-only is unchanged.
+- Merged cells: the row handle selects every row the first and last cells of its row cover, the column handle every column the top and bottom cells of its column cover; insert, delete, Delete / Backspace and the previews act on all of them. A merged cell in between does not widen the selection (deleting shrinks it).
+- Each handle, menu, `+` or Delete / Backspace action starts a new undo step (undo never also reverts the typing before it).
+- Table handle: Header row and Header column switches (`aria-checked`), Delete table. `+` between two handles inserts a row or a column there.
+- Previews (band about to be deleted, insertion line) are an overlay: no transaction, history or collaboration update.
+- Cell range that is not a whole row or column: Merge cells / Split cell, enabled by `can().mergeCells()` / `can().splitCell()`.
+- `tableBubbleMenu` keys set to `false` remove the matching handle items (`addRowBefore`, `addRowAfter` + row `+`, `deleteRow` + Delete / Backspace on a whole row, `addColumnBefore`, `addColumnAfter` + column `+`, `deleteColumn`, `toggleHeaderRow`, `toggleHeaderColumn`, `deleteTable`); `cellBubbleMenu` removes Merge cells / Split cell from the menus and the range bar.
+- Read-only: no handle, `+`, menu or range bar. With hidden rows (filter), Delete column, Delete table, the header switches, inserting above or deleting the header row, Insert left / right and the column `+` (a new column drops the filters), and Merge cells over hidden rows or across rows are disabled with the reason written in the menu or the range bar. A row inserted from a handle, or kept shown by the cursor when a handle opens, stays visible until the filters change.
+- Keyboard: Shift+F10 in a cell focuses its row handle, Tab reaches the other handles, Enter opens, arrows / Home / End move, Escape closes and refocuses the handle (Escape on a handle returns to the text).
+- Tokens: `--ate-table-handle-background`, `--ate-table-handle-border-color`, `--ate-table-handle-color`, `--ate-table-handle-active-background`, `--ate-table-handle-active-color`, `--ate-table-preview-remove-background`, `--ate-table-preview-remove-border-color`, `--ate-table-preview-insert-color`.
+
 ## 📋 Paste Settings (`paste`)
 
 `paste?: AtePasteConfig` (input or `[config]`, merged, input wins) applies to HTML pasted or dropped from other apps:

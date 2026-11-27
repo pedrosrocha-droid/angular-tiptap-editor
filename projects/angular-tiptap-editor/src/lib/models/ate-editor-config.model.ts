@@ -102,6 +102,8 @@ export interface AteEditorConfig {
   enableTableSort?: boolean;
   /** Enable filtering table rows by column from the header cells (opt-in, `false` by default) */
   enableTableFilter?: boolean;
+  /** Row, column and table handles instead of the table menus (opt-in, `false` by default) */
+  enableTableHandles?: boolean;
   /** Maximum number of characters allowed */
   maxCharacters?: number;
   /**

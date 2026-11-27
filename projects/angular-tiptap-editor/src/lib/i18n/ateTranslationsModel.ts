@@ -168,6 +168,26 @@ export interface AteTranslations {
     filterTo: string;
     clearColumn: string;
     filterMergedCells: string;
+    /** Name of a row handle and its menu; `{n}` is the row number, from 1 */
+    rowHandle: string;
+    /** Name of a column handle and its menu; `{name}` is the header text, else the column number */
+    columnHandle: string;
+    tableHandle: string;
+    insertAbove: string;
+    insertBelow: string;
+    insertLeft: string;
+    insertRight: string;
+    filterColumn: string;
+    headerRow: string;
+    headerColumn: string;
+    insertRow: string;
+    insertColumn: string;
+    /** Why a handle menu item is disabled while a filter hides rows */
+    filteredDeleteColumn: string;
+    filteredDeleteTable: string;
+    filteredHeader: string;
+    filteredInsertColumn: string;
+    filteredCells: string;
   };
 
   // Image Upload
