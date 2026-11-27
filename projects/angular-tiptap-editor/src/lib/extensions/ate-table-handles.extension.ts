@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
 import { EditorState, Selection, type Transaction } from "@tiptap/pm/state";
 import {
@@ -450,7 +451,7 @@ export function runTableHandleAction(
   if (!tr) {
     return false;
   }
-  view.dispatch(tr.scrollIntoView());
+  view.dispatch(closeHistory(tr).scrollIntoView());
   return true;
 }
 

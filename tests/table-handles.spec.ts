@@ -315,6 +315,25 @@ test.describe("Table handles", () => {
     await expect(column(page, 0)).toHaveText(["Name", "Dan"]);
   });
 
+  test("one undo takes back a handle action alone, not the typing right before it", async ({
+    page,
+  }) => {
+    await setConfig(page, HANDLES);
+    await setContent(page, PEOPLE);
+
+    await cell(page, 1, 0).click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("x");
+    await expect(cell(page, 1, 0)).toHaveText("Annx");
+
+    const menu = await openMenu(page, rowHandle(page), "Row 2");
+    await menu.getByRole("menuitem", { name: "Delete row" }).click();
+    await expect(column(page, 0)).toHaveText(["Name", "Bob", "Cid", "Dan"]);
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(column(page, 0)).toHaveText(["Name", "Annx", "Bob", "Cid", "Dan"]);
+  });
+
   test("the column handle selects the column and sorts, inserts and deletes", async ({ page }) => {
     await setConfig(page, { ...HANDLES, enableTableSort: true, enableTableFilter: true });
     await setContent(page, PEOPLE);
@@ -1055,6 +1074,7 @@ test.describe("Table handles", () => {
 
     await page.keyboard.press("ControlOrMeta+z");
     await expect(rows(page)).toHaveCount(4);
+    await expect(column(page, 0)).toHaveText(["H1", "A", "b2", "D"]);
     await cellWithText(page, "b2").hover();
     menu = await openMenu(page, rowHandle(page), "Row 3");
     await page.keyboard.press("Escape");
