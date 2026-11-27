@@ -1274,6 +1274,8 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
   }
 
   private openFilter(target: AteTableHandleTarget) {
+    this.lastCellElement = null;
+    this.setHovered({ tablePos: target.tablePos, row: 0, col: target.index });
     this.closeMenu("handle");
     toggleTableColumnMenu(this.editor().view, { tablePos: target.tablePos, col: target.index });
   }

@@ -436,6 +436,26 @@ test.describe("Table handles", () => {
     await expect(columnHandle(page)).toBeFocused();
   });
 
+  test("Filter… keeps the handles when the filter hides the row under the pointer", async ({
+    page,
+  }) => {
+    await setConfig(page, { ...HANDLES, enableTableFilter: true });
+    await setContent(page, PEOPLE);
+
+    await cell(page, 2, 1).hover();
+    const menu = await openMenu(page, columnHandle(page), "Column City");
+    await menu.getByRole("menuitem", { name: "Filter…" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Column menu: City" });
+    await dialog.getByRole("checkbox", { name: /^Lyon/ }).uncheck();
+    await expect(hiddenRows(page)).toHaveCount(1);
+    await expect(columnHandle(page)).toHaveAccessibleName("Column City");
+
+    await page.keyboard.press("Escape");
+    await expectMenuClosed(dialog);
+    await expect(columnHandle(page)).toBeFocused();
+  });
+
   test("leaves the header sort button to tables without handles; read-only stays as without them", async ({
     page,
   }) => {
