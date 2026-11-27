@@ -317,12 +317,13 @@ import { ATE_EFFECT_OPTIONS } from "../../utils/ate-effect.utils";
           [style.display]="editorFullyInitialized() ? 'block' : 'none'"></ate-cell-bubble-menu>
       }
 
-      <!-- Table Handles -->
       @if (finalEditable() && !mergedDisabled() && finalEnableTableHandles() && editor()) {
         <ate-table-handles
           [editor]="editor()!"
           [enableSort]="finalEnableTableSort()"
-          [enableFilter]="finalEnableTableFilter()" />
+          [enableFilter]="finalEnableTableFilter()"
+          [tableMenu]="finalTableBubbleMenuConfig()"
+          [cellMenu]="finalCellBubbleMenuConfig()" />
         <ate-table-range-bar
           [editor]="editor()!"
           [config]="finalCellBubbleMenuConfig()"
@@ -2187,7 +2188,12 @@ export class AngularTiptapEditorComponent implements AfterViewInit, OnDestroy {
         columnButtons: () => untracked(() => !this.finalEnableTableHandles()),
       }),
       AteTableHandles.configure({
-        enabled: () => untracked(() => this.finalEnableTableHandles()),
+        enabled: () =>
+          untracked(
+            () =>
+              this.finalEnableTableHandles() &&
+              this.finalTableBubbleMenuConfig().deleteRow !== false
+          ),
       }),
       Markdown,
       registerAngularComponent(this.injector, AteTocNodeOptions),

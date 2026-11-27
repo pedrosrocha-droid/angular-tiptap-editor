@@ -183,6 +183,9 @@ export const GERMAN_TRANSLATIONS: AteTranslations = {
     filteredDeleteTable:
       "Bei aktivem Filter kann die Tabelle nicht gelöscht werden: Filter löschen.",
     filteredHeader: "Bei aktivem Filter bleiben die Kopfzellen unverändert: Filter löschen.",
+    filteredInsertColumn: "Bei aktivem Filter kann keine Spalte eingefügt werden: Filter löschen.",
+    filteredCells:
+      "Bei aktivem Filter können diese Zellen nicht verbunden oder geteilt werden: Filter löschen.",
   },
 
   imageUpload: {

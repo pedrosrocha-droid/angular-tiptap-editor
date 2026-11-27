@@ -186,6 +186,8 @@ export interface AteTranslations {
     filteredDeleteColumn: string;
     filteredDeleteTable: string;
     filteredHeader: string;
+    filteredInsertColumn: string;
+    filteredCells: string;
   };
 
   // Image Upload

@@ -35,6 +35,7 @@ export interface AteButtonConfig {
       [style.background-color]="backgroundColor()"
       [ateTooltip]="title()"
       [attr.aria-label]="title()"
+      [attr.aria-describedby]="describedBy()"
       (mousedown)="onMouseDown($event)"
       (click)="buttonClick.emit($event)"
       type="button">
@@ -243,6 +244,7 @@ export class AteButtonComponent {
   variant = input<"default" | "text" | "danger">("default");
   size = input<"small" | "medium" | "large">("medium");
   iconSize = input<"small" | "medium" | "large">("medium");
+  describedBy = input<string | null>(null);
 
   // Outputs
   buttonClick = output<Event>();

@@ -214,6 +214,10 @@ export const SPANISH_TRANSLATIONS: AteTranslations = {
       "Con un filtro activo no se puede eliminar la columna: borra los filtros.",
     filteredDeleteTable: "Con un filtro activo no se puede eliminar la tabla: borra los filtros.",
     filteredHeader: "Con un filtro activo el encabezado no cambia: borra los filtros.",
+    filteredInsertColumn:
+      "Con un filtro activo no se puede insertar ninguna columna: borra los filtros.",
+    filteredCells:
+      "Con un filtro activo no se pueden combinar ni dividir estas celdas: borra los filtros.",
   },
   imageUpload: {
     selectImage: "Seleccionar imagen",

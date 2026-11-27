@@ -171,6 +171,10 @@ export const FRENCH_TRANSLATIONS: AteTranslations = {
     filteredDeleteTable:
       "Avec un filtre actif, le tableau ne peut pas être supprimé : effacez les filtres.",
     filteredHeader: "Avec un filtre actif, l'en-tête ne change pas : effacez les filtres.",
+    filteredInsertColumn:
+      "Avec un filtre actif, aucune colonne ne peut être insérée : effacez les filtres.",
+    filteredCells:
+      "Avec un filtre actif, ces cellules ne peuvent être ni fusionnées ni divisées : effacez les filtres.",
   },
   imageUpload: {
     selectImage: "Sélectionner une image",

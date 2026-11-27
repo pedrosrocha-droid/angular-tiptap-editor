@@ -1,6 +1,6 @@
 import { Extension } from "@tiptap/core";
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
-import { Selection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import { EditorState, Selection, type Transaction } from "@tiptap/pm/state";
 import {
   CellSelection,
   TableMap,
@@ -8,15 +8,25 @@ import {
   addRow,
   cellAround,
   columnIsHeader,
+  mergeCells,
   removeColumn,
   removeRow,
   rowIsHeader,
+  splitCell,
   tableNodeTypes,
   type TableRect,
 } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 import { protectsHiddenRows } from "../utils/ate-table-hidden-rows.utils";
-import { selectionTouchesHiddenRows, tableAt, tableHiddenRows } from "./ate-table-sort.extension";
+import {
+  canSortTable,
+  pinTableRows,
+  rowsShownBySelection,
+  selectionTouchesHiddenRows,
+  tableAt,
+  tableHasHiddenRows,
+  tableHiddenRows,
+} from "./ate-table-sort.extension";
 
 export type AteTableHandleKind = "row" | "column" | "table";
 
@@ -34,20 +44,30 @@ export interface AteTableCell {
   col: number;
 }
 
+/** Rows (row handle) or columns (column handle) a handle selects, from `from` to `to` excluded */
+export interface AteTableSpan {
+  from: number;
+  to: number;
+}
+
+export type AteTableCellsAction = "mergeCells" | "splitCell";
+
 /**
  * Changes made from a handle: insert before or after a row or a column, delete it (the table
- * for the table handle), or toggle the header row or column of the table
+ * for the table handle), toggle the header row or column of the table, or merge or split the
+ * cells the handle selects
  */
 export type AteTableHandleAction =
   | "insertBefore"
   | "insertAfter"
   | "delete"
   | "toggleHeaderRow"
-  | "toggleHeaderColumn";
+  | "toggleHeaderColumn"
+  | AteTableCellsAction;
 
 export interface AteTableHandleActionState {
   enabled: boolean;
-  /** The action would change rows a filter hides */
+  /** The action would change rows a filter hides, or drop the filters of the table */
   blockedByFilter: boolean;
 }
 
@@ -108,6 +128,77 @@ export function tableCellAtDOM(view: EditorView, element: Node): AteTableCell | 
   return cellOf(cellAround(view.state.doc.resolve(pos)));
 }
 
+function cellSelectionRect(selection: CellSelection) {
+  const tableStart = selection.$anchorCell.start(-1);
+  const map = TableMap.get(selection.$anchorCell.node(-1));
+  const rect = map.rectBetween(
+    selection.$anchorCell.pos - tableStart,
+    selection.$headCell.pos - tableStart
+  );
+  return { ...rect, map, tablePos: tableStart - 1 };
+}
+
+/** Whether the selection covers whole columns, the rows a filter hides below it aside */
+export function isTableColumnSelection(state: EditorState): boolean {
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) {
+    return false;
+  }
+  if (selection.isColSelection()) {
+    return true;
+  }
+  const { top, bottom, map, tablePos } = cellSelectionRect(selection);
+  const hidden = tableHiddenRows(state).get(tablePos);
+  if (top > 0 || !hidden?.size) {
+    return false;
+  }
+  for (let row = bottom; row < map.height; row++) {
+    if (!hidden.has(row)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function handleSelection(state: EditorState, target: AteTableHandleTarget): CellSelection | null {
+  const table = tableAt(state.doc, target.tablePos);
+  if (!table || target.kind === "table") {
+    return null;
+  }
+  const map = TableMap.get(table);
+  const size = target.kind === "row" ? map.height : map.width;
+  if (target.index < 0 || target.index >= size) {
+    return null;
+  }
+  const cell = (row: number, col: number) =>
+    state.doc.resolve(tableCellPos(table, target.tablePos, row, col));
+  if (target.kind === "row") {
+    return CellSelection.rowSelection(cell(target.index, 0), cell(target.index, map.width - 1));
+  }
+  const hidden = tableHiddenRows(state).get(target.tablePos);
+  let last = map.height - 1;
+  while (last > 0 && hidden?.has(last)) {
+    last--;
+  }
+  // Not CellSelection.colSelection: it always ends in the last row, which a filter would then show
+  return new CellSelection(cell(0, target.index), cell(last, target.index));
+}
+
+/** The rows or columns a handle selects, more than one when merged cells stretch the selection */
+export function tableHandleSpan(
+  state: EditorState,
+  target: AteTableHandleTarget
+): AteTableSpan | null {
+  const selection = handleSelection(state, target);
+  if (!selection) {
+    return null;
+  }
+  const rect = cellSelectionRect(selection);
+  return target.kind === "row"
+    ? { from: rect.top, to: rect.bottom }
+    : { from: rect.left, to: rect.right };
+}
+
 function cursorAt(tr: Transaction, tablePos: number, row: number, col: number): Transaction {
   const table = tableAt(tr.doc, tablePos);
   if (!table) {
@@ -151,32 +242,43 @@ function rowTransaction(
   target: AteTableHandleTarget,
   action: AteTableHandleAction
 ): Transaction | null {
-  const rect = wholeTable(table, target.tablePos);
-  const { height } = rect.map;
-  if (target.index < 0 || target.index >= height) {
+  const span = tableHandleSpan(state, target);
+  if (!span) {
     return null;
   }
+  const { height } = TableMap.get(table);
   if (action === "insertBefore" || action === "insertAfter") {
-    const row = action === "insertBefore" ? target.index : target.index + 1;
-    return cursorAt(addRow(state.tr, rect, row), target.tablePos, row, 0);
+    const row = action === "insertBefore" ? span.from : span.to;
+    const tr = addRow(state.tr, wholeTable(table, target.tablePos), row);
+    const grown = tableAt(tr.doc, target.tablePos);
+    if (grown) {
+      pinTableRows(tr, [tableRowPos(grown, target.tablePos, row)]);
+    }
+    return cursorAt(tr, target.tablePos, row, 0);
   }
-  if (action === "delete" && height > 1) {
+  if (action === "delete" && span.to - span.from < height) {
     const tr = state.tr;
-    removeRow(tr, rect, target.index);
-    return cursorAt(tr, target.tablePos, rowAfterRemoval(state, target, height), 0);
+    for (let row = span.to - 1; row >= span.from; row--) {
+      const current = tableAt(tr.doc, target.tablePos);
+      if (current) {
+        removeRow(tr, wholeTable(current, target.tablePos), row);
+      }
+    }
+    const next = rowAfterRemoval(state, target.tablePos, span, height);
+    return cursorAt(tr, target.tablePos, next, 0);
   }
   return null;
 }
 
 /** Index, after the removal, of a row the filter shows: a cursor left in a hidden row shows it */
-function rowAfterRemoval(state: EditorState, target: AteTableHandleTarget, height: number) {
-  const hidden = tableHiddenRows(state).get(target.tablePos);
-  for (let row = target.index + 1; row < height; row++) {
+function rowAfterRemoval(state: EditorState, tablePos: number, span: AteTableSpan, height: number) {
+  const hidden = tableHiddenRows(state).get(tablePos);
+  for (let row = span.to; row < height; row++) {
     if (!hidden?.has(row)) {
-      return row - 1;
+      return row - (span.to - span.from);
     }
   }
-  for (let row = target.index - 1; row > 0; row--) {
+  for (let row = span.from - 1; row > 0; row--) {
     if (!hidden?.has(row)) {
       return row;
     }
@@ -190,21 +292,59 @@ function columnTransaction(
   target: AteTableHandleTarget,
   action: AteTableHandleAction
 ): Transaction | null {
-  const rect = wholeTable(table, target.tablePos);
-  const { width } = rect.map;
-  if (target.index < 0 || target.index >= width) {
+  const span = tableHandleSpan(state, target);
+  if (!span) {
     return null;
   }
+  const { width } = TableMap.get(table);
   if (action === "insertBefore" || action === "insertAfter") {
-    const col = action === "insertBefore" ? target.index : target.index + 1;
-    return cursorAt(addColumn(state.tr, rect, col), target.tablePos, 0, col);
+    const col = action === "insertBefore" ? span.from : span.to;
+    const tr = addColumn(state.tr, wholeTable(table, target.tablePos), col);
+    return cursorAt(tr, target.tablePos, 0, col);
   }
-  if (action === "delete" && width > 1) {
+  if (action === "delete" && span.to - span.from < width) {
     const tr = state.tr;
-    removeColumn(tr, rect, target.index);
-    return cursorAt(tr, target.tablePos, 0, Math.min(target.index, width - 2));
+    for (let col = span.to - 1; col >= span.from; col--) {
+      const current = tableAt(tr.doc, target.tablePos);
+      if (current) {
+        removeColumn(tr, wholeTable(current, target.tablePos), col);
+      }
+    }
+    const left = width - (span.to - span.from);
+    return cursorAt(tr, target.tablePos, 0, Math.min(span.from, left - 1));
   }
   return null;
+}
+
+function cellsCommandTransaction(
+  state: EditorState,
+  action: AteTableCellsAction
+): Transaction | null {
+  let result: Transaction | null = null;
+  const command = action === "mergeCells" ? mergeCells : splitCell;
+  command(state, tr => {
+    result = tr;
+  });
+  return result;
+}
+
+function cellsTransaction(
+  state: EditorState,
+  target: AteTableHandleTarget,
+  action: AteTableCellsAction
+): Transaction | null {
+  const selection = handleSelection(state, target);
+  if (!selection) {
+    return null;
+  }
+  const source = state.selection.eq(selection)
+    ? state
+    : EditorState.create({ doc: state.doc, selection });
+  return cellsCommandTransaction(source, action);
+}
+
+function isCellsAction(action: AteTableHandleAction): action is AteTableCellsAction {
+  return action === "mergeCells" || action === "splitCell";
 }
 
 /** The transaction a handle action makes, or null when it cannot apply to the target */
@@ -216,6 +356,9 @@ export function tableHandleTransaction(
   const table = tableAt(state.doc, target.tablePos);
   if (!table) {
     return null;
+  }
+  if (isCellsAction(action)) {
+    return cellsTransaction(state, target, action);
   }
   switch (target.kind) {
     case "row":
@@ -234,21 +377,55 @@ export function tableHandleTransaction(
   }
 }
 
+/** Whether a table with hidden rows keeps its filters: the same width and no cell spanning rows */
+function keepsFilters(tr: Transaction, state: EditorState, tablePos: number): boolean {
+  const before = tableAt(state.doc, tablePos);
+  if (!before || !tableHasHiddenRows(state, tablePos)) {
+    return true;
+  }
+  const mapped = tr.mapping.mapResult(tablePos, 1);
+  const after = mapped.deleted ? null : tableAt(tr.doc, mapped.pos);
+  return (
+    !after || (TableMap.get(after).width === TableMap.get(before).width && canSortTable(after))
+  );
+}
+
+function filterState(
+  tr: Transaction | null,
+  state: EditorState,
+  tablePos: number,
+  strict?: boolean
+): AteTableHandleActionState {
+  if (!tr) {
+    return { enabled: false, blockedByFilter: false };
+  }
+  const blockedByFilter =
+    !protectsHiddenRows(tr, state, tableHiddenRows(state), strict) ||
+    !keepsFilters(tr, state, tablePos);
+  return { enabled: !blockedByFilter, blockedByFilter };
+}
+
 /**
  * Whether a handle action can run. A filter blocks it the way it blocks any transaction that
- * would alter the rows it hides, the selection set aside: the action runs from a visible cell.
+ * would alter the rows it hides, the selection set aside (the action runs from a visible cell),
+ * and blocks what would drop the filters: changing the width or spanning rows.
  */
 export function tableHandleActionState(
   state: EditorState,
   target: AteTableHandleTarget,
   action: AteTableHandleAction
 ): AteTableHandleActionState {
-  const tr = tableHandleTransaction(state, target, action);
-  if (!tr) {
-    return { enabled: false, blockedByFilter: false };
-  }
-  const blockedByFilter = !protectsHiddenRows(tr, state, tableHiddenRows(state), false);
-  return { enabled: !blockedByFilter, blockedByFilter };
+  return filterState(tableHandleTransaction(state, target, action), state, target.tablePos, false);
+}
+
+/** Whether Merge cells or Split cell can run on the selection, and whether a filter blocks them */
+export function tableCellsActionState(
+  state: EditorState,
+  action: AteTableCellsAction
+): AteTableHandleActionState {
+  const cell = selectionTableCell(state);
+  const tr = cell ? cellsCommandTransaction(state, action) : null;
+  return filterState(tr, state, cell?.tablePos ?? -1);
 }
 
 export function runTableHandleAction(
@@ -256,11 +433,15 @@ export function runTableHandleAction(
   target: AteTableHandleTarget,
   action: AteTableHandleAction
 ): boolean {
-  const table = tableAt(view.state.doc, target.tablePos);
-  if (!view.editable || !table || !tableHandleActionState(view.state, target, action).enabled) {
+  if (!view.editable || !tableHandleActionState(view.state, target, action).enabled) {
     return false;
   }
-  if (selectionTouchesHiddenRows(view.state)) {
+  const selection = isCellsAction(action) ? handleSelection(view.state, target) : null;
+  if (selection) {
+    if (!view.state.selection.eq(selection)) {
+      view.dispatch(view.state.tr.setSelection(selection));
+    }
+  } else if (selectionTouchesHiddenRows(view.state)) {
     const row = target.kind === "row" ? target.index : 0;
     const col = target.kind === "column" ? target.index : 0;
     view.dispatch(cursorAt(view.state.tr, target.tablePos, row, col));
@@ -273,36 +454,20 @@ export function runTableHandleAction(
   return true;
 }
 
+/** Selects the row or column of a handle; rows only the current selection kept shown stay shown */
 export function selectTableHandleTarget(view: EditorView, target: AteTableHandleTarget): void {
   const { state } = view;
+  const selection = handleSelection(state, target);
   const table = tableAt(state.doc, target.tablePos);
-  if (!table || target.kind === "table") {
+  if (!selection || !table) {
     return;
   }
-  const map = TableMap.get(table);
-  const size = target.kind === "row" ? map.height : map.width;
-  if (target.index < 0 || target.index >= size) {
-    return;
-  }
-  const cell = (row: number, col: number) =>
-    state.doc.resolve(tableCellPos(table, target.tablePos, row, col));
-  if (target.kind === "row") {
-    const selection = CellSelection.rowSelection(
-      cell(target.index, 0),
-      cell(target.index, map.width - 1)
-    );
-    view.dispatch(state.tr.setSelection(selection));
-    return;
-  }
-  const hidden = tableHiddenRows(state).get(target.tablePos);
-  let last = map.height - 1;
-  while (last > 0 && hidden?.has(last)) {
-    last--;
-  }
-  // Not CellSelection.colSelection: it always ends in the last row, which a filter would then show
-  view.dispatch(
-    state.tr.setSelection(new CellSelection(cell(0, target.index), cell(last, target.index)))
+  const shown = rowsShownBySelection(state, target.tablePos);
+  const tr = pinTableRows(
+    state.tr.setSelection(selection),
+    shown.map(row => tableRowPos(table, target.tablePos, row))
   );
+  view.dispatch(tr);
 }
 
 /**

@@ -663,11 +663,11 @@ function keepsHeaderRows(tr: Transaction, before: PMNode, hidden: AteHiddenRows)
 }
 
 /**
- * Refuses a change that would alter or remove rows a filter hides. While the selection touches
- * hidden rows (or when `strict`), a hidden row must stay unchanged (deleting or merging rows over
- * a filter); else it must keep its cells (deleting a column, deleting the table, turning a column
- * into headers) and the table its header row. Undo, collaboration, table fixes and whole-document
- * replacements go through.
+ * Refuses a change that would alter or remove rows a filter hides. When `strict`, a hidden row
+ * must stay unchanged (deleting or merging rows over a filter); else it must keep its cells
+ * (deleting a column, deleting the table, turning a column into headers). Either way the table
+ * keeps its header row. `strict` defaults to whether the selection touches hidden rows. Undo,
+ * collaboration, table fixes and whole-document replacements go through.
  */
 export function protectsHiddenRows(
   tr: Transaction,

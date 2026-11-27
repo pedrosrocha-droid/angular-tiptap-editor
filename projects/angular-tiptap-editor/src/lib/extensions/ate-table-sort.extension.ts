@@ -114,7 +114,7 @@ export interface AteTableSortState {
   menu: AteTableColumnTarget | null;
   /** Whether the rows holding the selection stay visible; off right after a filter changes */
   sticky: boolean;
-  /** Start positions of rows a paste added, shown until the filters change */
+  /** Start positions of rows shown until the filters change (added by a paste or a table handle) */
   pinned: readonly number[];
   enableSort: boolean;
   enableFilter: boolean;
@@ -813,8 +813,13 @@ function reduce(
       });
       return { ...current, tables };
     }
-    case "pin":
-      return { ...current, pinned: [...current.pinned, ...action.rows] };
+    case "pin": {
+      const filtered = Array.from(current.tables).filter(([, tracked]) => tracked.filters.size);
+      const rows = action.rows.filter(pos =>
+        filtered.some(([tablePos]) => rowIndexIn(doc, tablePos, pos + 1) !== null)
+      );
+      return rows.length ? { ...current, pinned: [...current.pinned, ...rows] } : current;
+    }
     case "toggleMenu": {
       const same = current.menu?.tablePos === action.tablePos && current.menu.col === action.col;
       const valid = !!tableAt(doc, action.tablePos);
@@ -1368,6 +1373,29 @@ export function selectionTableHasHiddenRows(state: EditorState): boolean {
 /** Rows a filter hides, by table position */
 export function tableHiddenRows(state: EditorState): AteHiddenRows {
   return hiddenOf(state);
+}
+
+/** Rows of the table at `tablePos` its filters fail, shown only because the selection holds them */
+export function rowsShownBySelection(state: EditorState, tablePos: number): number[] {
+  const plugin = ateTableSortKey.getState(state);
+  const tracked = plugin?.tables.get(tablePos);
+  const table = tableAt(state.doc, tablePos);
+  if (!plugin?.enableFilter || !tracked?.filters.size || !table) {
+    return [];
+  }
+  const failing = failingRowsOf(table, tracked.filters, plugin.decimal);
+  const hidden = plugin.hidden.get(tablePos);
+  return Array.from(selectionRows(state.selection, tablePos)).filter(
+    row => failing.has(row) && !hidden?.has(row)
+  );
+}
+
+/** Keeps rows (their start positions in `tr.doc`) shown until the filters of their table change */
+export function pinTableRows(tr: Transaction, rows: number[]): Transaction {
+  if (rows.length) {
+    addAction(tr, { type: "pin", rows });
+  }
+  return tr;
 }
 
 /** Whether the selection covers rows a filter hides, which blocks row and cell operations */

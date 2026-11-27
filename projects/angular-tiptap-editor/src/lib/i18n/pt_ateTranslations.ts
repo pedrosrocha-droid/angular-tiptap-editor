@@ -193,6 +193,9 @@ export const PORTUGUESE_TRANSLATIONS: AteTranslations = {
     filteredDeleteColumn: "Com filtro ativo a coluna não pode ser excluída: limpe os filtros.",
     filteredDeleteTable: "Com filtro ativo a tabela não pode ser excluída: limpe os filtros.",
     filteredHeader: "Com filtro ativo o cabeçalho não muda: limpe os filtros.",
+    filteredInsertColumn: "Com filtro ativo nenhuma coluna pode ser inserida: limpe os filtros.",
+    filteredCells:
+      "Com filtro ativo estas células não podem ser mescladas nem divididas: limpe os filtros.",
   },
   imageUpload: {
     selectImage: "Selecionar imagem",

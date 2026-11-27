@@ -23,8 +23,19 @@ import { AteIconComponent } from "../../ui/ate-icon.component";
 import { ATE_EFFECT_OPTIONS } from "../../../utils/ate-effect.utils";
 import { AteTranslations } from "../../../i18n/ateTranslationsModel";
 import {
+  ATE_DEFAULT_CELL_MENU_CONFIG,
+  ATE_DEFAULT_TABLE_MENU_CONFIG,
+} from "../../../config/ate-editor.config";
+import type {
+  AteCellBubbleMenuConfig,
+  AteTableBubbleMenuConfig,
+  AteTableBubbleMenuKey,
+} from "../../../models/ate-bubble-menu.model";
+import {
   type AteTableCell,
+  type AteTableCellsAction,
   type AteTableHandleAction,
+  type AteTableHandleActionState,
   type AteTableHandleKind,
   type AteTableHandleTarget,
   runTableHandleAction,
@@ -32,6 +43,7 @@ import {
   selectionTableCell,
   tableCellAtDOM,
   tableHandleActionState,
+  tableHandleSpan,
   tableRowPos,
 } from "../../../extensions/ate-table-handles.extension";
 import {
@@ -59,10 +71,20 @@ interface AteHandlesLayout {
   table: AteBox;
   row: AteBox;
   column: AteBox;
+  /** Every row or column the handle selects (merged cells stretch it): previews and `+` use it */
+  rowBand: AteBox;
+  columnBand: AteBox;
   /** The column handle and its `+` fit in the visible part of the table */
   columnShown: boolean;
   /** The top edge of the table is inside the editor viewport */
   topShown: boolean;
+  /** The middle of the row under the pointer is inside the editor viewport */
+  rowShown: boolean;
+}
+
+interface AteTableElements {
+  wrapper: HTMLElement;
+  table: HTMLTableElement;
 }
 
 interface AteTablePreview {
@@ -89,14 +111,25 @@ interface AteActionOptions {
   filtered: string;
   preview?: AteTablePreview;
   danger?: boolean;
-  separated?: boolean;
   checked?: boolean;
   keepOpen?: boolean;
 }
 
 type AteTableLabels = AteTranslations["table"];
 
+interface AteMenuSettings {
+  t: AteTableLabels;
+  sort: boolean;
+  filter: boolean;
+  tableMenu: AteTableBubbleMenuConfig;
+  cellMenu: AteCellBubbleMenuConfig;
+}
+
 const HIDE_DELAY = 250;
+
+const CONTEXT_MENU_GRACE = 1000;
+
+const NO_ACTION: AteTableHandleActionState = { enabled: false, blockedByFilter: false };
 
 let nextId = 0;
 
@@ -141,45 +174,99 @@ function columnRect(view: EditorView, table: PMNode, tablePos: number, col: numb
   return fallback;
 }
 
+function tableElements(view: EditorView, tablePos: number): AteTableElements | null {
+  const dom = view.nodeDOM(tablePos);
+  if (!(dom instanceof HTMLElement)) {
+    return null;
+  }
+  const table = dom instanceof HTMLTableElement ? dom : dom.querySelector("table");
+  return table ? { wrapper: dom, table } : null;
+}
+
+function rowsBox(view: EditorView, table: PMNode, tablePos: number, from: number, to: number) {
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (let row = from; row < to; row++) {
+    const rect = rowElement(view, table, tablePos, row)?.getBoundingClientRect();
+    if (rect?.height) {
+      top = Math.min(top, rect.top);
+      bottom = Math.max(bottom, rect.bottom);
+    }
+  }
+  return top < bottom ? { top, bottom } : null;
+}
+
+function columnsBox(view: EditorView, table: PMNode, tablePos: number, from: number, to: number) {
+  const first = columnRect(view, table, tablePos, from);
+  const last = columnRect(view, table, tablePos, to - 1);
+  return first && last ? { left: first.left, right: last.right } : null;
+}
+
 function measureHandles(
   view: EditorView,
   cell: AteTableCell,
   origin: DOMRect,
   viewport: DOMRect | null
 ): AteHandlesLayout | null {
-  const table = tableAt(view.state.doc, cell.tablePos);
+  const { state } = view;
+  const table = tableAt(state.doc, cell.tablePos);
   const map = table ? TableMap.get(table) : null;
-  if (!table || !map || cell.row >= map.height || cell.col >= map.width) {
+  const elements = tableElements(view, cell.tablePos);
+  if (!table || !map || !elements || cell.row >= map.height || cell.col >= map.width) {
     return null;
   }
-  const dom = view.nodeDOM(cell.tablePos);
-  const tableElement =
-    dom instanceof HTMLTableElement
-      ? dom
-      : dom instanceof HTMLElement
-        ? dom.querySelector("table")
-        : null;
   const rowRect = rowElement(view, table, cell.tablePos, cell.row)?.getBoundingClientRect();
   const colRect = columnRect(view, table, cell.tablePos, cell.col);
-  if (!(dom instanceof HTMLElement) || !tableElement || !rowRect?.height || !colRect) {
+  if (!rowRect?.height || !colRect) {
     return null;
   }
-  const tableRect = tableElement.getBoundingClientRect();
-  const clip = dom.getBoundingClientRect();
+  const rows = tableHandleSpan(state, { kind: "row", tablePos: cell.tablePos, index: cell.row });
+  const cols = tableHandleSpan(state, { kind: "column", tablePos: cell.tablePos, index: cell.col });
+  const rowBand = (rows && rowsBox(view, table, cell.tablePos, rows.from, rows.to)) ?? rowRect;
+  const columnBand =
+    (cols && columnsBox(view, table, cell.tablePos, cols.from, cols.to)) ?? colRect;
+  const tableRect = elements.table.getBoundingClientRect();
+  const clip = elements.wrapper.getBoundingClientRect();
   const left = Math.max(tableRect.left, clip.left);
   const right = Math.min(tableRect.right, clip.right);
   const center = colRect.left + colRect.width / 2;
+  const middle = rowRect.top + rowRect.height / 2;
   return {
     table: relativeBox(origin, left, tableRect.top, right, tableRect.bottom),
     row: relativeBox(origin, left, rowRect.top, right, rowRect.bottom),
     column: relativeBox(origin, colRect.left, tableRect.top, colRect.right, tableRect.bottom),
+    rowBand: relativeBox(origin, left, rowBand.top, right, rowBand.bottom),
+    columnBand: relativeBox(
+      origin,
+      columnBand.left,
+      tableRect.top,
+      columnBand.right,
+      tableRect.bottom
+    ),
     columnShown: center >= left && center <= right,
     topShown: !viewport || tableRect.top >= viewport.top,
+    rowShown: !viewport || (middle >= viewport.top && middle <= viewport.bottom),
   };
 }
 
+function handleShown(kind: AteTableHandleKind, layout: AteHandlesLayout): boolean {
+  switch (kind) {
+    case "row":
+      return layout.rowShown;
+    case "column":
+      return layout.topShown && layout.columnShown;
+    default:
+      return layout.topShown;
+  }
+}
+
 function previewRect(preview: AteTablePreview, layout: AteHandlesLayout): AteBox {
-  const band = layout[preview.band];
+  const band =
+    preview.band === "row"
+      ? layout.rowBand
+      : preview.band === "column"
+        ? layout.columnBand
+        : layout.table;
   if (preview.kind === "remove") {
     return band;
   }
@@ -194,13 +281,17 @@ function previewRect(preview: AteTablePreview, layout: AteHandlesLayout): AteBox
 /** Shift+F10 is also the browser's context menu key; some engines open it on keyup */
 function suppressNextContextMenu() {
   const suppress = (event: Event) => event.preventDefault();
-  const options = { capture: true, once: true };
-  document.addEventListener("contextmenu", suppress, options);
-  document.addEventListener(
-    "keyup",
-    () => setTimeout(() => document.removeEventListener("contextmenu", suppress, options)),
-    { once: true }
-  );
+  const onKeyUp = () => setTimeout(release);
+  const timeout = setTimeout(release, CONTEXT_MENU_GRACE);
+  function release() {
+    clearTimeout(timeout);
+    document.removeEventListener("contextmenu", suppress, true);
+    document.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("blur", release);
+  }
+  document.addEventListener("contextmenu", suppress, { capture: true, once: true });
+  document.addEventListener("keyup", onKeyUp, { once: true });
+  window.addEventListener("blur", release, { once: true });
 }
 
 function sameCell(a: AteTableCell | null, b: AteTableCell | null): boolean {
@@ -233,23 +324,25 @@ function sameCell(a: AteTableCell | null, b: AteTableCell | null): boolean {
           [style.width.px]="box.width"
           [style.height.px]="box.height"></div>
       }
-      <button
-        type="button"
-        class="ate-table-handle is-row"
-        data-ate-table-handle="row"
-        aria-haspopup="menu"
-        [attr.aria-expanded]="menu()?.kind === 'row'"
-        [attr.aria-label]="rowLabel()"
-        [attr.title]="rowLabel()"
-        [style.left.px]="l.table.left - 7"
-        [style.top.px]="l.row.top + l.row.height / 2 - 10"
-        (mousedown)="$event.preventDefault()"
-        (click)="toggleMenu('row')"
-        (focus)="onHandleFocus()"
-        (keydown)="onHandleKeyDown($event, 'row')">
-        <ate-icon name="blockDrag" />
-      </button>
-      @if (l.topShown) {
+      @if (l.rowShown) {
+        <button
+          type="button"
+          class="ate-table-handle is-row"
+          data-ate-table-handle="row"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="menu()?.kind === 'row'"
+          [attr.aria-label]="rowLabel()"
+          [attr.title]="rowLabel()"
+          [style.left.px]="l.table.left - 7"
+          [style.top.px]="l.row.top + l.row.height / 2 - 10"
+          (mousedown)="$event.preventDefault()"
+          (click)="toggleMenu('row')"
+          (focus)="onHandleFocus()"
+          (keydown)="onHandleKeyDown($event, 'row')">
+          <ate-icon name="blockDrag" />
+        </button>
+      }
+      @if (l.topShown && tableActions()) {
         <button
           type="button"
           class="ate-table-handle is-table"
@@ -285,41 +378,51 @@ function sameCell(a: AteTableCell | null, b: AteTableCell | null): boolean {
           <ate-icon name="blockDrag" />
         </button>
       }
-      <button
-        type="button"
-        class="ate-table-insert is-row"
-        data-ate-table-insert="row"
-        [attr.aria-label]="t().insertRow"
-        [attr.title]="t().insertRow"
-        [style.left.px]="l.table.left - 8"
-        [style.top.px]="l.row.top + l.row.height - 8"
-        (mousedown)="$event.preventDefault()"
-        (mouseenter)="showPreview(rowGapPreview)"
-        (mouseleave)="hidePreview()"
-        (focus)="onPreviewFocus($event, rowGapPreview)"
-        (blur)="hidePreview()"
-        (click)="insertInGap('row')">
-        <ate-icon name="blockAdd" />
-      </button>
-      @if (l.topShown && l.columnShown) {
+      @if (l.rowShown && tableMenu().addRowAfter !== false) {
+        <button
+          type="button"
+          class="ate-table-insert is-row"
+          data-ate-table-insert="row"
+          [class.is-disabled]="!rowGap().enabled"
+          [attr.aria-disabled]="!rowGap().enabled || null"
+          [attr.aria-label]="t().insertRow"
+          [attr.aria-describedby]="rowGap().blockedByFilter ? gapReasonIds.row : null"
+          [attr.title]="rowGap().blockedByFilter ? t().filteredHeader : t().insertRow"
+          [style.left.px]="l.table.left - 8"
+          [style.top.px]="l.rowBand.top + l.rowBand.height - 8"
+          (mousedown)="$event.preventDefault()"
+          (mouseenter)="showPreview(rowGap().enabled ? rowGapPreview : null)"
+          (mouseleave)="hidePreview()"
+          (focus)="onPreviewFocus($event, rowGap().enabled ? rowGapPreview : null)"
+          (blur)="hidePreview()"
+          (click)="insertInGap('row')">
+          <ate-icon name="blockAdd" />
+        </button>
+      }
+      @if (l.topShown && l.columnShown && tableMenu().addColumnAfter !== false) {
         <button
           type="button"
           class="ate-table-insert is-column"
           data-ate-table-insert="column"
+          [class.is-disabled]="!columnGap().enabled"
+          [attr.aria-disabled]="!columnGap().enabled || null"
           [attr.aria-label]="t().insertColumn"
-          [attr.title]="t().insertColumn"
-          [style.left.px]="l.column.left + l.column.width - 8"
+          [attr.aria-describedby]="columnGap().blockedByFilter ? gapReasonIds.column : null"
+          [attr.title]="columnGap().blockedByFilter ? t().filteredInsertColumn : t().insertColumn"
+          [style.left.px]="l.columnBand.left + l.columnBand.width - 8"
           [style.top.px]="l.table.top - 8"
           (mousedown)="$event.preventDefault()"
-          (mouseenter)="showPreview(columnGapPreview)"
+          (mouseenter)="showPreview(columnGap().enabled ? columnGapPreview : null)"
           (mouseleave)="hidePreview()"
-          (focus)="onPreviewFocus($event, columnGapPreview)"
+          (focus)="onPreviewFocus($event, columnGap().enabled ? columnGapPreview : null)"
           (blur)="hidePreview()"
           (click)="insertInGap('column')">
           <ate-icon name="blockAdd" />
         </button>
       }
     }
+    <span hidden [id]="gapReasonIds.row">{{ t().filteredHeader }}</span>
+    <span hidden [id]="gapReasonIds.column">{{ t().filteredInsertColumn }}</span>
 
     <div
       #menuRef
@@ -424,10 +527,15 @@ function sameCell(a: AteTableCell | null, b: AteTableCell | null): boolean {
 
       .ate-table-handle:hover,
       .ate-table-handle[aria-expanded="true"],
-      .ate-table-insert:hover {
+      .ate-table-insert:hover:not(.is-disabled) {
         border-color: var(--ate-table-handle-active-background);
         background: var(--ate-table-handle-active-background);
         color: var(--ate-table-handle-active-color);
+      }
+
+      .ate-table-insert.is-disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
       }
 
       .ate-table-handle:focus-visible,
@@ -573,10 +681,16 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
   private readonly id = `ate-table-handles-${nextId++}`;
 
   readonly t = this.i18n.table;
+  readonly gapReasonIds = {
+    row: `${this.id}-insert-row-reason`,
+    column: `${this.id}-insert-column-reason`,
+  };
 
   editor = input.required<Editor>();
   enableSort = input(false);
   enableFilter = input(false);
+  tableMenu = input<AteTableBubbleMenuConfig>(ATE_DEFAULT_TABLE_MENU_CONFIG);
+  cellMenu = input<AteCellBubbleMenuConfig>(ATE_DEFAULT_CELL_MENU_CONFIG);
 
   /** The cell whose row and column show their handles */
   readonly hovered = signal<AteTableCell | null>(null);
@@ -597,7 +711,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     this.version();
     const cell = this.hovered();
     const label = this.t().columnHandle;
-    return cell ? label.replace("{name}", untracked(() => this.columnName(cell))) : "";
+    return cell ? label.replace("{name}", () => untracked(() => this.columnName(cell))) : "";
   });
 
   readonly menuTitle = computed(() => {
@@ -616,11 +730,23 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
   readonly items = computed<AteHandleMenuItem[]>(() => {
     const target = this.menu();
     this.version();
-    const t = this.t();
-    const sort = this.enableSort();
-    const filter = this.enableFilter();
-    return target ? untracked(() => this.menuItems(target, t, sort, filter)) : [];
+    const settings: AteMenuSettings = {
+      t: this.t(),
+      sort: this.enableSort(),
+      filter: this.enableFilter(),
+      tableMenu: this.tableMenu(),
+      cellMenu: this.cellMenu(),
+    };
+    return target ? untracked(() => this.menuItems(target, settings)) : [];
   });
+
+  readonly tableActions = computed(() => {
+    const { toggleHeaderRow, toggleHeaderColumn, deleteTable } = this.tableMenu();
+    return toggleHeaderRow !== false || toggleHeaderColumn !== false || deleteTable !== false;
+  });
+
+  readonly rowGap = computed(() => this.gapState("row"));
+  readonly columnGap = computed(() => this.gapState("column"));
 
   readonly previewBox = computed<AteBox | null>(() => {
     const preview = this.preview();
@@ -630,6 +756,8 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
 
   private readonly menuRef = viewChild.required<ElementRef<HTMLDivElement>>("menuRef");
   private tippyInstance: TippyInstance | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private observedTable: AteTableElements | null = null;
   private pointerInside = false;
   private lastCellElement: Element | null = null;
   private hideTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -641,7 +769,11 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
       const editor = this.editor();
       const onTransaction = ({ transaction }: { transaction: Transaction }) =>
         this.onTransaction(transaction);
-      const onUpdate = () => this.measure();
+      const onUpdate = () => this.onViewportChange();
+      const resizeObserver =
+        typeof ResizeObserver === "undefined" ? null : new ResizeObserver(this.onViewportChange);
+      resizeObserver?.observe(editor.view.dom);
+      this.resizeObserver = resizeObserver;
       editor.on("transaction", onTransaction);
       editor.on("update", onUpdate);
       document.addEventListener("pointermove", this.onPointerMove, { passive: true });
@@ -659,6 +791,9 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
         document.removeEventListener("keydown", this.onKeyDown);
         window.removeEventListener("scroll", this.onViewportChange, { capture: true });
         window.removeEventListener("resize", this.onViewportChange);
+        resizeObserver?.disconnect();
+        this.resizeObserver = null;
+        this.observedTable = null;
         untracked(() => this.reset());
       });
     }, ATE_EFFECT_OPTIONS);
@@ -745,7 +880,12 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     if (event.key === "Escape") {
       event.preventDefault();
       this.editor().commands.focus();
-    } else if (kind === "row" && cell && (event.key === "Delete" || event.key === "Backspace")) {
+    } else if (
+      kind === "row" &&
+      cell &&
+      (event.key === "Delete" || event.key === "Backspace") &&
+      this.tableMenu().deleteRow !== false
+    ) {
       event.preventDefault();
       this.act({ kind, tablePos: cell.tablePos, index: cell.row }, "delete");
     }
@@ -782,7 +922,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
         break;
       case "Delete":
       case "Backspace":
-        if (target.kind === "row") {
+        if (target.kind === "row" && this.tableMenu().deleteRow !== false) {
           event.preventDefault();
           this.act(target, "delete");
         }
@@ -808,6 +948,28 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
   }
 
   private onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType === "mouse") {
+      this.trackPointer(event);
+    }
+  };
+
+  /** Touch fires pointerout after every tap: only a mouse leaving the page hides the handles */
+  private onPointerOut = (event: PointerEvent) => {
+    if (event.pointerType === "mouse" && !event.relatedTarget) {
+      this.pointerInside = false;
+      this.scheduleHide();
+    }
+  };
+
+  private onPointerDown = (event: PointerEvent) => {
+    const target = event.target;
+    if (!(target instanceof Node && this.owns(target))) {
+      this.closeMenu(null);
+    }
+    this.trackPointer(event);
+  };
+
+  private trackPointer(event: PointerEvent) {
     const editor = this.editor();
     if (editor.isDestroyed) {
       return;
@@ -833,25 +995,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     if (cell) {
       this.setHovered(cell);
     }
-  };
-
-  private onPointerOut = (event: PointerEvent) => {
-    if (!event.relatedTarget) {
-      this.pointerInside = false;
-      this.scheduleHide();
-    }
-  };
-
-  private onPointerDown = (event: PointerEvent) => {
-    const target = event.target;
-    if (!(target instanceof Node && this.owns(target))) {
-      this.closeMenu(null);
-    }
-    // Touch and pen have no hover: a tap shows the handles of its cell
-    if (event.pointerType !== "mouse") {
-      this.onPointerMove(event);
-    }
-  };
+  }
 
   private onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "F10" || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
@@ -881,13 +1025,19 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
   };
 
   private onViewportChange = () => {
-    if (this.measureFrame === null && this.hovered()) {
+    if (this.hovered()) {
+      this.scheduleMeasure();
+    }
+  };
+
+  private scheduleMeasure() {
+    if (this.measureFrame === null) {
       this.measureFrame = requestAnimationFrame(() => {
         this.measureFrame = null;
         this.measure();
       });
     }
-  };
+  }
 
   private onTransaction(tr: Transaction) {
     if (tr.docChanged) {
@@ -908,7 +1058,11 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
       }
     }
     this.version.update(value => value + 1);
-    this.measure();
+    if (this.hovered()) {
+      this.scheduleMeasure();
+    } else {
+      this.measure();
+    }
   }
 
   private mapTable(tr: Transaction, tablePos: number): number | null {
@@ -953,25 +1107,56 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     this.measure();
   }
 
+  private gapState(kind: "row" | "column"): AteTableHandleActionState {
+    this.version();
+    const cell = this.hovered();
+    if (!cell) {
+      return NO_ACTION;
+    }
+    const target = { kind, tablePos: cell.tablePos, index: kind === "row" ? cell.row : cell.col };
+    return untracked(() => tableHandleActionState(this.editor().state, target, "insertAfter"));
+  }
+
   private measure() {
     const cell = this.hovered();
     const editor = this.editor();
     const viewport = editor.options.element as HTMLElement | null;
+    const view = cell && !editor.isDestroyed && editor.isEditable ? editor.view : null;
     const layout =
-      cell && !editor.isDestroyed && editor.isEditable
+      cell && view
         ? measureHandles(
-            editor.view,
+            view,
             cell,
             this.host.nativeElement.getBoundingClientRect(),
             viewport?.getBoundingClientRect() ?? null
           )
         : null;
     this.layout.set(layout);
+    this.observeTable(cell && view ? tableElements(view, cell.tablePos) : null);
+    const menu = this.menu();
+    if (menu && !(layout && handleShown(menu.kind, layout))) {
+      this.closeMenu(this.focusInside() ? "editor" : null);
+    }
     if (!layout) {
-      this.closeMenu(null);
       this.preview.set(null);
     }
     this.tippyInstance?.popperInstance?.update();
+  }
+
+  /** Column resizing and images loading move the handles without a transaction or a scroll */
+  private observeTable(elements: AteTableElements | null) {
+    if (elements?.table === this.observedTable?.table) {
+      return;
+    }
+    if (this.observedTable) {
+      this.resizeObserver?.unobserve(this.observedTable.wrapper);
+      this.resizeObserver?.unobserve(this.observedTable.table);
+    }
+    if (elements) {
+      this.resizeObserver?.observe(elements.wrapper);
+      this.resizeObserver?.observe(elements.table);
+    }
+    this.observedTable = elements;
   }
 
   private scheduleHide() {
@@ -1021,6 +1206,9 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     this.menu.set(target);
     this.preview.set(null);
     selectTableHandleTarget(view, target);
+    if (this.menu() !== target) {
+      return;
+    }
     this.tippyInstance?.show();
     this.focusLater(() => {
       const items = Array.from(
@@ -1038,10 +1226,11 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     this.menu.set(null);
     this.preview.set(null);
     this.tippyInstance?.hide();
+    const editor = this.editor();
     if (focus === "handle") {
       this.handleElement(target.kind)?.focus({ preventScroll: true });
-    } else if (focus === "editor") {
-      this.editor().view.focus();
+    } else if (focus === "editor" && !editor.isDestroyed) {
+      editor.view.focus();
     }
   }
 
@@ -1056,9 +1245,13 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     if (target.kind !== "row" || !layout) {
       return rect;
     }
-    // Below the row rather than its handle, so the row and the line after it stay visible
     const origin = this.host.nativeElement.getBoundingClientRect();
-    return new DOMRect(rect.left, origin.top + layout.row.top, rect.width, layout.row.height);
+    return new DOMRect(
+      rect.left,
+      origin.top + layout.rowBand.top,
+      rect.width,
+      layout.rowBand.height
+    );
   }
 
   private act(target: AteTableHandleTarget, action: AteTableHandleAction) {
@@ -1105,7 +1298,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
       id,
       label,
       danger: !!options.danger,
-      separated: !!options.separated,
+      separated: false,
       active: false,
       checked: options.checked ?? null,
       disabled: !enabled,
@@ -1115,90 +1308,116 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     };
   }
 
-  private menuItems(
-    target: AteTableHandleTarget,
-    t: AteTableLabels,
-    sortEnabled: boolean,
-    filterEnabled: boolean
-  ): AteHandleMenuItem[] {
+  private menuItems(target: AteTableHandleTarget, settings: AteMenuSettings): AteHandleMenuItem[] {
     const { state } = this.editor();
     const table = tableAt(state.doc, target.tablePos);
     if (!table) {
       return [];
     }
+    const { t, tableMenu } = settings;
     const item = (
+      key: AteTableBubbleMenuKey,
       id: string,
       label: string,
       action: AteTableHandleAction,
       options: AteActionOptions
-    ) => this.actionItem(state, target, id, label, action, options);
+    ) =>
+      tableMenu[key] === false ? [] : [this.actionItem(state, target, id, label, action, options)];
+    let groups: AteHandleMenuItem[][];
     if (target.kind === "row") {
-      return [
-        item("insertAbove", t.insertAbove, "insertBefore", {
-          filtered: t.filteredHeader,
-          preview: { kind: "insert", band: "row", edge: "start" },
-        }),
-        item("insertBelow", t.insertBelow, "insertAfter", {
-          filtered: t.filteredHeader,
-          preview: { kind: "insert", band: "row", edge: "end" },
-        }),
-        item("deleteRow", t.deleteRow, "delete", {
+      groups = [
+        [
+          ...item("addRowBefore", "insertAbove", t.insertAbove, "insertBefore", {
+            filtered: t.filteredHeader,
+            preview: { kind: "insert", band: "row", edge: "start" },
+          }),
+          ...item("addRowAfter", "insertBelow", t.insertBelow, "insertAfter", {
+            filtered: t.filteredHeader,
+            preview: { kind: "insert", band: "row", edge: "end" },
+          }),
+        ],
+        this.cellsItems(state, target, settings),
+        item("deleteRow", "deleteRow", t.deleteRow, "delete", {
           filtered: t.filteredHeader,
           preview: { kind: "remove", band: "row", edge: "start" },
           danger: true,
-          separated: true,
         }),
       ];
-    }
-    if (target.kind === "table") {
+    } else if (target.kind === "table") {
       const map = TableMap.get(table);
-      return [
-        item("headerRow", t.headerRow, "toggleHeaderRow", {
-          filtered: t.filteredHeader,
-          checked: rowIsHeader(map, table, 0),
-          keepOpen: true,
-        }),
-        item("headerColumn", t.headerColumn, "toggleHeaderColumn", {
-          filtered: t.filteredHeader,
-          checked: columnIsHeader(map, table, 0),
-          keepOpen: true,
-        }),
-        item("deleteTable", t.deleteTable, "delete", {
+      groups = [
+        [
+          ...item("toggleHeaderRow", "headerRow", t.headerRow, "toggleHeaderRow", {
+            filtered: t.filteredHeader,
+            checked: rowIsHeader(map, table, 0),
+            keepOpen: true,
+          }),
+          ...item("toggleHeaderColumn", "headerColumn", t.headerColumn, "toggleHeaderColumn", {
+            filtered: t.filteredHeader,
+            checked: columnIsHeader(map, table, 0),
+            keepOpen: true,
+          }),
+        ],
+        item("deleteTable", "deleteTable", t.deleteTable, "delete", {
           filtered: t.filteredDeleteTable,
           preview: { kind: "remove", band: "table", edge: "start" },
           danger: true,
-          separated: true,
+        }),
+      ];
+    } else {
+      groups = [
+        this.sortFilterItems(state, table, target, settings),
+        [
+          ...item("addColumnBefore", "insertLeft", t.insertLeft, "insertBefore", {
+            filtered: t.filteredInsertColumn,
+            preview: { kind: "insert", band: "column", edge: "start" },
+          }),
+          ...item("addColumnAfter", "insertRight", t.insertRight, "insertAfter", {
+            filtered: t.filteredInsertColumn,
+            preview: { kind: "insert", band: "column", edge: "end" },
+          }),
+        ],
+        this.cellsItems(state, target, settings),
+        item("deleteColumn", "deleteColumn", t.deleteColumn, "delete", {
+          filtered: t.filteredDeleteColumn,
+          preview: { kind: "remove", band: "column", edge: "start" },
+          danger: true,
         }),
       ];
     }
-    const columnItems = this.sortFilterItems(state, table, target, t, sortEnabled, filterEnabled);
-    return [
-      ...columnItems,
-      item("insertLeft", t.insertLeft, "insertBefore", {
-        filtered: t.filteredHeader,
-        preview: { kind: "insert", band: "column", edge: "start" },
-        separated: columnItems.length > 0,
-      }),
-      item("insertRight", t.insertRight, "insertAfter", {
-        filtered: t.filteredHeader,
-        preview: { kind: "insert", band: "column", edge: "end" },
-      }),
-      item("deleteColumn", t.deleteColumn, "delete", {
-        filtered: t.filteredDeleteColumn,
-        preview: { kind: "remove", band: "column", edge: "start" },
-        danger: true,
-        separated: true,
-      }),
+    return groups
+      .filter(group => group.length > 0)
+      .flatMap((group, index) =>
+        group.map((entry, position) => ({ ...entry, separated: index > 0 && position === 0 }))
+      );
+  }
+
+  /** Merge cells and Split cell, when they apply to what the handle selects */
+  private cellsItems(
+    state: EditorState,
+    target: AteTableHandleTarget,
+    { t, cellMenu }: AteMenuSettings
+  ): AteHandleMenuItem[] {
+    const actions: [AteTableCellsAction, string][] = [
+      ["mergeCells", t.mergeCells],
+      ["splitCell", t.splitCell],
     ];
+    return actions.flatMap(([action, label]) => {
+      if (cellMenu[action] === false) {
+        return [];
+      }
+      const entry = this.actionItem(state, target, action, label, action, {
+        filtered: t.filteredCells,
+      });
+      return entry.disabled && !entry.reason ? [] : [entry];
+    });
   }
 
   private sortFilterItems(
     state: EditorState,
     table: PMNode,
     target: AteTableHandleTarget,
-    t: AteTableLabels,
-    sortEnabled: boolean,
-    filterEnabled: boolean
+    { t, sort, filter }: AteMenuSettings
   ): AteHandleMenuItem[] {
     if (!hasHeaderRow(table)) {
       return [];
@@ -1207,7 +1426,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
     const merged = spansRows(table);
     const base = { danger: false, separated: false, checked: null, preview: null };
     const items: AteHandleMenuItem[] = [];
-    if (sortEnabled) {
+    if (sort) {
       const current = columnSortDirection(state, target.tablePos, target.index);
       const options: [string, string, AteTableSortDirection][] = [
         ["sortAscending", t.sortAscending, "asc"],
@@ -1225,7 +1444,7 @@ export class AteTableHandlesComponent implements AfterViewInit, OnDestroy {
         });
       }
     }
-    if (filterEnabled) {
+    if (filter) {
       const info = columnFilterInfo(state, { tablePos: target.tablePos, col: target.index });
       items.push({
         ...base,

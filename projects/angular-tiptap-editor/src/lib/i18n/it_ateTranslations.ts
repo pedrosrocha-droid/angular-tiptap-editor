@@ -216,6 +216,10 @@ export const ITALIAN_TRANSLATIONS: AteTranslations = {
     filteredDeleteTable:
       "Con un filtro attivo la tabella non può essere eliminata: cancella i filtri.",
     filteredHeader: "Con un filtro attivo l'intestazione non cambia: cancella i filtri.",
+    filteredInsertColumn:
+      "Con un filtro attivo non si possono inserire colonne: cancella i filtri.",
+    filteredCells:
+      "Con un filtro attivo queste celle non possono essere unite né divise: cancella i filtri.",
   },
   imageUpload: {
     selectImage: "Seleziona immagine",

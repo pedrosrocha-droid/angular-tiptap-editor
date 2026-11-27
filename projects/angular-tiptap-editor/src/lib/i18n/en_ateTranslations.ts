@@ -169,6 +169,8 @@ export const ENGLISH_TRANSLATIONS: AteTranslations = {
     filteredDeleteColumn: "With a filter on, the column cannot be deleted: clear the filters.",
     filteredDeleteTable: "With a filter on, the table cannot be deleted: clear the filters.",
     filteredHeader: "With a filter on, the header does not change: clear the filters.",
+    filteredInsertColumn: "With a filter on, no column can be inserted: clear the filters.",
+    filteredCells: "With a filter on, these cells cannot be merged or split: clear the filters.",
   },
   imageUpload: {
     selectImage: "Select Image",
