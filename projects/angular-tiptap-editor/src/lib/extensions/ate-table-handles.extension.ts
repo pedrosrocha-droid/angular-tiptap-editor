@@ -247,7 +247,6 @@ function rowTransaction(
   if (!span) {
     return null;
   }
-  const { height } = TableMap.get(table);
   if (action === "insertBefore" || action === "insertAfter") {
     const row = action === "insertBefore" ? span.from : span.to;
     const tr = addRow(state.tr, wholeTable(table, target.tablePos), row);
@@ -257,18 +256,28 @@ function rowTransaction(
     }
     return cursorAt(tr, target.tablePos, row, 0);
   }
-  if (action === "delete" && span.to - span.from < height) {
-    const tr = state.tr;
-    for (let row = span.to - 1; row >= span.from; row--) {
-      const current = tableAt(tr.doc, target.tablePos);
-      if (current) {
-        removeRow(tr, wholeTable(current, target.tablePos), row);
-      }
-    }
-    const next = rowAfterRemoval(state, target.tablePos, span, height);
-    return cursorAt(tr, target.tablePos, next, 0);
+  return action === "delete" ? removeRowsTransaction(state, target.tablePos, span) : null;
+}
+
+/** Removes the rows of `span` (null when they are all the rows), the cursor left in a shown row */
+function removeRowsTransaction(
+  state: EditorState,
+  tablePos: number,
+  span: AteTableSpan
+): Transaction | null {
+  const table = tableAt(state.doc, tablePos);
+  const height = table ? TableMap.get(table).height : 0;
+  if (!table || span.to - span.from >= height) {
+    return null;
   }
-  return null;
+  const tr = state.tr;
+  for (let row = span.to - 1; row >= span.from; row--) {
+    const current = tableAt(tr.doc, tablePos);
+    if (current) {
+      removeRow(tr, wholeTable(current, tablePos), row);
+    }
+  }
+  return cursorAt(tr, tablePos, rowAfterRemoval(state, tablePos, span, height), 0);
 }
 
 /** Index, after the removal, of a row the filter shows: a cursor left in a hidden row shows it */
@@ -491,17 +500,24 @@ export const AteTableHandles = Extension.create<AteTableHandlesOptions>({
   addKeyboardShortcuts() {
     const deleteRows = () => {
       const { editor } = this;
-      const { selection } = editor.state;
+      const { state } = editor;
+      const { selection } = state;
       if (
         !this.options.enabled() ||
         !editor.isEditable ||
         !(selection instanceof CellSelection) ||
         !selection.isRowSelection() ||
-        selectionTouchesHiddenRows(editor.state)
+        selectionTouchesHiddenRows(state)
       ) {
         return false;
       }
-      return editor.commands.deleteRow();
+      const { top, bottom, tablePos } = cellSelectionRect(selection);
+      const tr = removeRowsTransaction(state, tablePos, { from: top, to: bottom });
+      if (!tr) {
+        return false;
+      }
+      editor.view.dispatch(closeHistory(tr).scrollIntoView());
+      return true;
     };
     return {
       Backspace: deleteRows,

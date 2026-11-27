@@ -1015,6 +1015,26 @@ test.describe("Table handles", () => {
     await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Cidx"]);
   });
 
+  test("Backspace on a row picked from its handle leaves the cursor in a row the filter shows", async ({
+    page,
+  }) => {
+    await setConfig(page, { ...HANDLES, enableTableFilter: true });
+    await setContent(page, PEOPLE);
+    await filterColumn(page, 1, { kind: "values", values: ["Paris"] });
+    await expect(hiddenRows(page)).toHaveCount(2);
+
+    await cell(page, 1, 0).hover();
+    const menu = await openMenu(page, rowHandle(page), "Row 2");
+    await page.keyboard.press("Escape");
+    await expectMenuClosed(menu);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".ProseMirror")).toBeFocused();
+    await page.keyboard.press("Backspace");
+
+    await expect(visibleColumn(page, 0)).toHaveText(["Cid"]);
+    await expect(hiddenRows(page)).toHaveCount(2);
+  });
+
   test("follows tableBubbleMenu and cellBubbleMenu: an action set to false leaves the handle menus", async ({
     page,
   }) => {
