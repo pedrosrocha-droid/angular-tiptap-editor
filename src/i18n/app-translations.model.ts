@@ -85,6 +85,7 @@ export interface AppTranslations {
     tableColumns: string;
     enableTableSort: string;
     enableTableFilter: string;
+    enableTableHandles: string;
     tableOfContents: string;
     tocFloating: string;
     tocHoverExpand: string;

@@ -170,7 +170,7 @@ import {
           <!-- Block Shortcuts Configuration -->
           <app-block-shortcuts-config [disabled]="editorState().disabled" />
 
-          <!-- Table Sort & Filter Configuration -->
+          <!-- Table Configuration -->
           <app-table-column-config [disabled]="!editorState().editable || editorState().disabled" />
 
           <!-- Table of Contents (TOC) Configuration -->

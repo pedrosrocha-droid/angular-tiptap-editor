@@ -25,6 +25,7 @@ export interface EditorState {
   enableBlockShortcuts: boolean;
   enableTableSort: boolean;
   enableTableFilter: boolean;
+  enableTableHandles: boolean;
   placeholder: string;
   locale?: string;
   // Height configuration

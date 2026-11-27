@@ -54,6 +54,21 @@ import { AppI18nService } from "../services/app-i18n.service";
                 <span>{{ appI18n.config().enableTableFilter }}</span>
               </span>
             </label>
+
+            <!-- Enable Table Handles -->
+            <label class="config-item-row">
+              <input
+                type="checkbox"
+                class="config-checkbox"
+                [checked]="enableHandles()"
+                (change)="toggleHandles()"
+                [disabled]="disabled()" />
+              <span class="config-checkmark"></span>
+              <span class="config-item-label">
+                <span class="material-symbols-outlined">drag_indicator</span>
+                <span>{{ appI18n.config().enableTableHandles }}</span>
+              </span>
+            </label>
           </div>
         </div>
       </div>
@@ -78,13 +93,17 @@ export class TableColumnConfigComponent {
   readonly state = this.configService.editorState;
   readonly enableSort = computed(() => this.state().enableTableSort);
   readonly enableFilter = computed(() => this.state().enableTableFilter);
-  readonly isAnyEnabled = computed(() => this.enableSort() || this.enableFilter());
+  readonly enableHandles = computed(() => this.state().enableTableHandles);
+  readonly isAnyEnabled = computed(
+    () => this.enableSort() || this.enableFilter() || this.enableHandles()
+  );
 
   toggleBoth() {
     const next = !this.isAnyEnabled();
     this.configService.updateEditorState({
       enableTableSort: next,
       enableTableFilter: next,
+      enableTableHandles: next,
     });
   }
 
@@ -97,6 +116,12 @@ export class TableColumnConfigComponent {
   toggleFilter() {
     this.configService.updateEditorState({
       enableTableFilter: !this.enableFilter(),
+    });
+  }
+
+  toggleHandles() {
+    this.configService.updateEditorState({
+      enableTableHandles: !this.enableHandles(),
     });
   }
 }

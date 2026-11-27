@@ -47,6 +47,7 @@ export const DEFAULT_EDITOR_STATE: EditorState = {
   enableBlockShortcuts: true,
   enableTableSort: false,
   enableTableFilter: false,
+  enableTableHandles: false,
   placeholder: "Start typing...",
   locale: undefined,
   minHeight: undefined,
