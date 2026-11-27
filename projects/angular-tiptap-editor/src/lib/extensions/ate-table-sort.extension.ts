@@ -815,8 +815,10 @@ function reduce(
     }
     case "pin": {
       const filtered = Array.from(current.tables).filter(([, tracked]) => tracked.filters.size);
-      const rows = action.rows.filter(pos =>
-        filtered.some(([tablePos]) => rowIndexIn(doc, tablePos, pos + 1) !== null)
+      const rows = Array.from(new Set(action.rows)).filter(
+        pos =>
+          !current.pinned.includes(pos) &&
+          filtered.some(([tablePos]) => rowIndexIn(doc, tablePos, pos + 1) !== null)
       );
       return rows.length ? { ...current, pinned: [...current.pinned, ...rows] } : current;
     }

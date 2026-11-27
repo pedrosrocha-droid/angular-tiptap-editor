@@ -6,8 +6,13 @@ type DebugNode = {
   descendants: (fn: (node: DebugNode, pos: number) => boolean | void) => void;
 };
 
+type DebugPlugin = {
+  key: string;
+  getState: (state: unknown) => { pinned: readonly number[] } | undefined;
+};
+
 type DebugEditor = {
-  state: { doc: DebugNode; selection: Record<string, unknown> };
+  state: { doc: DebugNode; selection: Record<string, unknown>; plugins: DebugPlugin[] };
   setEditable: (editable: boolean) => void;
   getHTML: () => string;
   on: (event: string, handler: () => void) => void;
@@ -119,6 +124,16 @@ const editorHtml = (page: Page) => withEditor(page, editor => editor.getHTML(), 
 
 const isCellSelection = (page: Page) =>
   withEditor(page, editor => "$anchorCell" in editor.state.selection, null);
+
+const pinnedRows = (page: Page) =>
+  withEditor(
+    page,
+    editor => {
+      const plugin = editor.state.plugins.find(item => item.key.startsWith("ateTableSort$"));
+      return plugin?.getState(editor.state)?.pinned.length ?? -1;
+    },
+    null
+  );
 
 function cell(page: Page, row: number, column: number) {
   return page.locator(`.ProseMirror table tr:nth-child(${row + 1}) > :nth-child(${column + 1})`);
@@ -1033,6 +1048,27 @@ test.describe("Table handles", () => {
 
     await filterColumn(page, 1, { kind: "values", values: ["Paris"] });
     await expect(visibleColumn(page, 0)).toHaveText(["Ann", "Cidx"]);
+  });
+
+  test("opening a handle again over a row kept shown pins it once", async ({ page }) => {
+    await setConfig(page, { ...HANDLES, enableTableFilter: true });
+    await setContent(page, PEOPLE);
+    await filterColumn(page, 1, { kind: "values", values: ["Paris"] });
+
+    await cell(page, 1, 0).hover();
+    let menu = await openMenu(page, rowHandle(page), "Row 2");
+    await menu.getByRole("menuitem", { name: "Insert below" }).click();
+    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "", "Cid"]);
+    await expect.poll(() => pinnedRows(page)).toBe(1);
+
+    for (let round = 0; round < 2; round++) {
+      await cell(page, 2, 0).hover();
+      menu = await openMenu(page, rowHandle(page), "Row 3");
+      await page.keyboard.press("Escape");
+      await expectMenuClosed(menu);
+    }
+    await expect.poll(() => pinnedRows(page)).toBe(1);
+    await expect(visibleColumn(page, 0)).toHaveText(["Ann", "", "Cid"]);
   });
 
   test("Backspace on a row picked from its handle leaves the cursor in a row the filter shows", async ({
